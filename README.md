@@ -1,4 +1,26 @@
-# React + TypeScript + Vite
+# LyricFlow
+
+LyricFlow is deployed automatically to GitHub Pages from `main`:
+
+`https://casperboi14.github.io/LyricFlow/`
+
+The GitHub Pages workflow builds the Vite app and publishes `dist`. Search and
+lyrics use public browser-accessible APIs. Song identification requires the
+development API proxy, so it is available locally but not in the static Pages
+deployment.
+
+## Local development
+
+```sh
+npm ci
+npm run dev
+```
+
+## Production build
+
+```sh
+npm run build
+```
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 

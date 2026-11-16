@@ -31,15 +31,7 @@ export async function findAudioSource(title: string, artist: string): Promise<Au
   const q = `${title} ${artist}`.trim()
 
   try {
-    const res = await fetch(`/api/audio/find?q=${encodeURIComponent(`${q} official audio`)}`)
-    const data = await res.json().catch(() => ({}))
-    if (res.ok && data?.videoId) {
-      return { youtubeId: data.videoId, cover: data.thumbnail || undefined }
-    }
-  } catch { /* fall through to preview */ }
-
-  try {
-    const res = await fetch(`/api/music/search?q=${encodeURIComponent(q)}`)
+    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&limit=20`)
     const data = await res.json().catch(() => ({}))
     const hit = (data.results || []).find((r: any) => r?.previewUrl)
     if (hit) return { audioUrl: hit.previewUrl, cover: hit.artworkUrl100 || undefined }

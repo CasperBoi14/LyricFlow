@@ -1,7 +1,7 @@
 import type { LyricLine, Track, SearchResult } from '../types'
 import { parseLrc } from './lyrics'
 
-const API = '/api/lyrics'
+const API = import.meta.env.DEV ? '/api/lyrics' : 'https://lrclib.net/api'
 
 function coverFor(seed: string) {
   const hues = [200, 260, 330, 160, 20, 45]

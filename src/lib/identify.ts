@@ -20,6 +20,9 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export async function identifyRecorded(blob: Blob): Promise<IdentifyMatch> {
+  if (!import.meta.env.DEV) {
+    throw new Error('Song identification is unavailable on the static GitHub Pages build.')
+  }
   const sample = await blobToBase64(blob)
   const res = await fetch('/api/identify', {
     method: 'POST',

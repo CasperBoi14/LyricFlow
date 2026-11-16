@@ -81,7 +81,7 @@ export function disconnectSpotify() {
 }
 
 async function tokenRequest(body: Record<string, string>) {
-  const res = await fetch('/api/spotify/token', {
+  const res = await fetch(import.meta.env.DEV ? '/api/spotify/token' : 'https://accounts.spotify.com/api/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

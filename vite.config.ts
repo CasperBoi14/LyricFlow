@@ -100,7 +100,7 @@ function apiPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: process.env.GITHUB_ACTIONS ? '/lyricflow/' : '/',
+  base: process.env.GITHUB_ACTIONS ? '/LyricFlow/' : '/',
   plugins: [react(), apiPlugin()],
 })
 
