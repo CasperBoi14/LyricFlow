@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Track } from '../types'
 import type { LiveIdentifyState, LiveMatch } from '../lib/useLiveIdentify'
 import { resolveToTrack } from '../lib/lrclib'
+import { getAuddToken } from '../lib/keys'
 
 type Props = {
   live: LiveIdentifyState
@@ -125,7 +126,11 @@ export function IdentifyView({ live, currentTrack, health, onOpen }: Props) {
       )}
 
       {!live.active && !live.matches.length && (
-        <div className="notice">Your microphone stays on this device. Audio samples are only sent to Shazam for recognition.</div>
+        <div className="notice">
+          {getAuddToken()
+            ? 'Your microphone stays on this device. Audio samples are only sent to AudD for recognition.'
+            : 'Your microphone stays on this device. Add a free AudD token in Audio providers to recognize songs without a backend.'}
+        </div>
       )}
     </div>
   )

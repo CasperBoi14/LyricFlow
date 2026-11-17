@@ -6,11 +6,13 @@ import { SearchView } from './components/SearchView'
 import { LibraryView } from './components/LibraryView'
 import { AddToPlaylist } from './components/AddToPlaylist'
 import { FullscreenLyrics } from './components/FullscreenLyrics'
+import { ProviderSetup } from './components/ProviderSetup'
 import { tracks as demoTracks } from './data/tracks'
 import type { AppView, Track } from './types'
 import { formatTime } from './lib/lyrics'
-import { findAudioSource } from './lib/audio'
+import { findAudioSource, isPreviewAudioUrl } from './lib/audio'
 import { hasBackend } from './lib/api'
+import { getYouTubeApiKey } from './lib/keys'
 import { useAudioEngine } from './lib/useAudioEngine'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
 import { completeSpotifyLogin, hasSpotifyAuth } from './lib/spotify'
@@ -85,6 +87,7 @@ export default function App() {
     return [...demoTracks, ...saved.filter((t) => !demoTracks.some((d) => d.id === t.id))]
   })
   const [selectedId, setSelectedId] = useState<string>(demoTracks[0]?.id ?? '')
+  const [providerVersion, setProviderVersion] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
@@ -171,7 +174,7 @@ export default function App() {
       .catch(() => { if (!cancelled) { setAudioError('Could not find audio for this track.'); setPlaying(false) } })
       .finally(() => { resolving.delete(selectedId) })
     return () => { cancelled = true; resolving.delete(selectedId) }
-  }, [selectedId, selectedYoutubeId, selectedAudioUrl, selectedSource, selectedTitle, selectedArtist])
+  }, [selectedId, selectedYoutubeId, selectedAudioUrl, selectedSource, selectedTitle, selectedArtist, providerVersion])
 
   const openTrack = (t: Track, startAt = 0) => {
     setCatalog((c) => c.some((x) => x.id === t.id) ? c.map((x) => x.id === t.id ? t : x) : [t, ...c])
@@ -190,6 +193,12 @@ export default function App() {
     if (!catalog.length) return
     pendingRef.current = { startAt: 0, play: playing }
     setSelectedId(catalog[(currentIndex - 1 + catalog.length) % catalog.length].id)
+  }
+
+  const onProvidersSaved = () => {
+    // Previews are 30 seconds long, so drop them and resolve again with the new provider.
+    setCatalog((c) => c.map((t) => (isPreviewAudioUrl(t.audioUrl) ? { ...t, audioUrl: undefined } : t)))
+    setProviderVersion((v) => v + 1)
   }
 
   const updateDelay = (ms: number) => {
@@ -283,8 +292,13 @@ export default function App() {
             <div className="notice" style={{ margin: '4px 10px 0' }}>Demo track · simulated playback. Search a real song for full audio.</div>
           )}
           {!hasBackend && selected && selected.source !== 'demo' && !selected.youtubeId && (
-            <div className="notice" style={{ margin: '4px 10px 0' }}>Full songs need the API backend. Playing 30-second previews until it is connected.</div>
+            <div className="notice" style={{ margin: '4px 10px 0' }}>
+              {getYouTubeApiKey()
+                ? 'No full-length source found for this track — playing the 30-second preview.'
+                : 'Playing a 30-second preview. Add a free YouTube API key below to play full songs.'}
+            </div>
           )}
+          {!hasBackend && <ProviderSetup onSaved={onProvidersSaved} />}
           <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} />
           {selected?.youtubeId && (
             <div className="youtube-box">

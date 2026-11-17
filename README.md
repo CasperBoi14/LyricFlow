@@ -4,15 +4,29 @@ LyricFlow is deployed automatically to GitHub Pages from `main`:
 
 `https://casperboi14.github.io/LyricFlow/`
 
-The GitHub Pages workflow builds the Vite app and publishes `dist`. Full-song
-playback, song identification and Spotify token exchange use a backend. Without
-a backend the app still works with 30-second iTunes previews and direct LRCLIB /
-iTunes requests.
+The GitHub Pages workflow builds the Vite app and publishes `dist`. The app is
+fully usable without a backend: it streams full-length audio through the YouTube
+player and recognizes songs from the microphone through AudD, both directly from
+the browser. Without provider keys it still works with 30-second iTunes previews
+and direct LRCLIB / iTunes requests.
 
-To connect a backend, set `VITE_API_BASE_URL=https://your-backend.example.com`
-in the GitHub Actions repository variables (or in `.env` locally) and rebuild.
-Leaving it empty uses the same origin, which is useful when one server hosts
-both `dist` and `/api`.
+## Browser providers (no backend)
+
+Add either key in the app under **Audio providers**, or bake it into the build
+with a GitHub Actions repository variable (or `.env` locally):
+
+- `VITE_YOUTUBE_API_KEY` — free [YouTube Data API v3](https://console.cloud.google.com/apis/credentials)
+  key. Searches for an embeddable video and plays the full track in the YouTube
+  player. Without it, playback falls back to 30-second iTunes previews.
+- `VITE_AUDD_API_TOKEN` — free [AudD](https://dashboard.audd.io/) token. Sends
+  the 12-second microphone sample straight from the browser for recognition.
+
+Keys entered in the app are stored in `localStorage` on the user's device.
+
+To connect the full API backend instead, set
+`VITE_API_BASE_URL=https://your-backend.example.com` in the GitHub Actions
+repository variables (or in `.env` locally) and rebuild. Leaving it empty uses
+the same origin, which is useful when one server hosts both `dist` and `/api`.
 
 ## Backend contract
 

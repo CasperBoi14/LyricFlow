@@ -1,6 +1,11 @@
 import { apiUrl, hasBackend } from './api'
+import { getYouTubeApiKey } from './keys'
 
 export type AudioSource = { youtubeId?: string; audioUrl?: string; cover?: string }
+
+const YOUTUBE_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search'
+const VIDEO_ID_PATTERN = /^[\w-]{11}$/
+const SEARCH_TIMEOUT_MS = 9000
 
 type SourceResponse = {
   youtubeId?: string
@@ -54,19 +59,66 @@ async function backendSource(query: string): Promise<AudioSource | null> {
   }
 }
 
+async function keyedYoutubeSource(query: string): Promise<AudioSource | null> {
+  const key = getYouTubeApiKey()
+  if (!key) return null
+
+  const url = new URL(YOUTUBE_SEARCH_URL)
+  url.searchParams.set('part', 'snippet')
+  url.searchParams.set('type', 'video')
+  url.searchParams.set('videoEmbeddable', 'true')
+  url.searchParams.set('videoSyndicated', 'true')
+  url.searchParams.set('maxResults', '5')
+  url.searchParams.set('q', query)
+  url.searchParams.set('key', key)
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    if (!res.ok) return null
+    const data = await res.json().catch(() => null)
+    const items: any[] = Array.isArray(data?.items) ? data.items : []
+    for (const item of items) {
+      const youtubeId = item?.id?.videoId
+      if (typeof youtubeId !== 'string' || !VIDEO_ID_PATTERN.test(youtubeId)) continue
+      const thumbs = item?.snippet?.thumbnails
+      const cover = thumbs?.high?.url || thumbs?.medium?.url || thumbs?.default?.url || undefined
+      return { youtubeId, cover }
+    }
+    return null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function previewSource(query: string): Promise<AudioSource> {
   try {
     const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=20`)
     const data = await res.json().catch(() => ({}))
     const hit = (data.results || []).find((r: any) => r?.previewUrl)
-    if (hit) return { audioUrl: hit.previewUrl, cover: hit.artworkUrl100 || undefined }
+    if (hit) {
+      const cover = typeof hit.artworkUrl100 === 'string'
+        ? hit.artworkUrl100.replace('100x100bb', '400x400bb')
+        : undefined
+      return { audioUrl: hit.previewUrl, cover }
+    }
   } catch { /* no preview available */ }
   return {}
+}
+
+/** iTunes previews only carry 30 seconds, so they are upgraded when a full source can be resolved. */
+export function isPreviewAudioUrl(url: string | undefined): boolean {
+  return typeof url === 'string' && /(?:itunes|mzstatic|audio-ssl)\./i.test(url)
 }
 
 export async function findAudioSource(title: string, artist: string): Promise<AudioSource> {
   const q = `${title} ${artist}`.trim()
   const full = await backendSource(q)
   if (full) return full
+  const keyed = await keyedYoutubeSource(`${q} official audio`)
+  if (keyed) return keyed
   return previewSource(q)
 }
