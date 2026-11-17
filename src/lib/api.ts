@@ -1,7 +1,11 @@
 const API_BASE_KEY = 'lf-api-base-url'
 const queryBase = new URLSearchParams(window.location.search).get('api')
+const deployedBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '')
 
-if (queryBase !== null) {
+if (deployedBase) {
+  // A deployed backend supersedes a temporary tunnel saved in this browser.
+  localStorage.removeItem(API_BASE_KEY)
+} else if (queryBase !== null) {
   if (queryBase === 'off') localStorage.removeItem(API_BASE_KEY)
   else {
     try {
@@ -13,7 +17,7 @@ if (queryBase !== null) {
   }
 }
 
-const configuredBase = (localStorage.getItem(API_BASE_KEY) || (import.meta.env.VITE_API_BASE_URL as string | undefined))?.replace(/\/+$/, '')
+const configuredBase = deployedBase || localStorage.getItem(API_BASE_KEY)?.replace(/\/+$/, '')
 
 export const apiBaseUrl = configuredBase || ''
 

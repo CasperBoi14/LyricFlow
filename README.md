@@ -36,6 +36,15 @@ To connect the full API backend instead, set
 repository variables (or in `.env` locally) and rebuild. Leaving it empty uses
 the same origin, which is useful when one server hosts both `dist` and `/api`.
 
+For an always available public backend, import this repository into Vercel. The
+root `api/` directory contains the API functions; `vercel.json` selects Vite
+and the `dist` output. Verify `https://<project>.vercel.app/api/health`, then set
+the GitHub Actions repository variable `VITE_API_BASE_URL` to that Vercel origin
+and run the Pages workflow. The deployed address replaces any temporary tunnel
+saved by an earlier `?api=` link. Set `SPOTIFY_CLIENT_ID` and
+`SPOTIFY_CLIENT_SECRET` in Vercel's environment only if you want server-managed
+Spotify login; browser PKCE works with a Client ID entered in the app.
+
 ## Backend contract
 
 The frontend expects these JSON endpoints:
@@ -67,7 +76,7 @@ default. Other devices on the same network can open `http://<server-ip>:8787/`.
 Spotify sign-in needs HTTPS (or a loopback address), so use the GitHub Pages
 site with an HTTPS backend address for Spotify on other devices.
 
-To point the GitHub Pages site at an HTTPS backend, open it once with
+When no deployed backend is configured, point the GitHub Pages site at an HTTPS backend by opening it once with
 `?api=https://your-backend.example.com`. LyricFlow saves that address in this
 browser, including across Spotify sign-in redirects. Use `?api=off` to clear it.
 The backend must allow `https://casperboi14.github.io` in `CORS_ORIGIN`.
