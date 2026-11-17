@@ -10,10 +10,12 @@ import type { AdState, AppView, Track } from './types'
 import { formatTime } from './lib/lyrics'
 import { findAudioSource, isPreviewAudioUrl } from './lib/audio'
 import { hasBackend } from './lib/api'
+import { resolveToTrack } from './lib/lrclib'
 import { useAudioEngine } from './lib/useAudioEngine'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
-import { beginSpotifyLogin, completeSpotifyLogin, findSpotifyTrack, hasSpotifyAuth, hasSpotifyPlayback } from './lib/spotify'
-import { canUseSpotifyPlayback, isSpotifyUriBlocked, resetSpotifyPlayer } from './lib/spotifyPlayer'
+import { beginSpotifyLogin, completeSpotifyLogin, findSpotifyTrack, hasSpotifyAuth, hasSpotifyPlayback, spotifyFetch, type SpotifyActivePlayback } from './lib/spotify'
+import { canUseSpotifyPlayback, getSpotifyDeviceId, isSpotifyUriBlocked, resetSpotifyPlayer } from './lib/spotifyPlayer'
+import { useSpotifyFollow } from './lib/useSpotifyFollow'
 import {
   createPlaylist,
   loadPlaylists,
@@ -27,6 +29,7 @@ import {
 
 const DELAY_KEY = 'lf-lyric-delay'
 const DELAY_LIMIT = 3000
+type RemotePlayback = SpotifyActivePlayback & { trackId: string; at: number }
 
 function loadDelayMs(): number {
   const raw = Number(localStorage.getItem(DELAY_KEY))
@@ -115,6 +118,8 @@ export default function App() {
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null)
   const [pendingSpotify, setPendingSpotify] = useState<string | null>(null)
   const [connectingSpotify, setConnectingSpotify] = useState(false)
+  const [remotePlayback, setRemotePlayback] = useState<RemotePlayback | null>(null)
+  const [syncError, setSyncError] = useState<string | null>(null)
   const live = useLiveIdentify()
 
   const selected = useMemo<Track | null>(() => catalog.find((t) => t.id === selectedId) ?? null, [catalog, selectedId])
@@ -123,6 +128,9 @@ export default function App() {
   const spotifyTriedRef = useRef<Set<string>>(new Set())
   const resolvingRef = useRef<Set<string>>(new Set())
   const recordedRef = useRef<string | null>(null)
+  const remoteRef = useRef<RemotePlayback | null>(null)
+  const ignoredRemoteUriRef = useRef<string | null>(null)
+  const remoteResolvingRef = useRef<Set<string>>(new Set())
 
   useEffect(() => { catalogRef.current = catalog }, [catalog])
 
@@ -130,14 +138,16 @@ export default function App() {
     track: selected,
     playing,
     spotifyReady,
+    externalPlayback: !!remotePlayback,
     holdPlayback: !!pendingSpotify && pendingSpotify === selectedId && !selected?.spotifyUri,
-    onTime: setTime,
-    onPlayingChange: setPlaying,
-    onDuration: setAudioDuration,
-    onEnded: () => setPlaying(false),
-    onError: setAudioError,
-    onAd: setAd,
+    onTime: (value) => { if (!remoteRef.current) setTime(value) },
+    onPlayingChange: (value) => { if (!remoteRef.current) setPlaying(value) },
+    onDuration: (value) => { if (!remoteRef.current) setAudioDuration(value) },
+    onEnded: () => { if (!remoteRef.current) setPlaying(false) },
+    onError: (message) => { if (!remoteRef.current) setAudioError(message) },
+    onAd: (nextAd) => { if (!remoteRef.current) setAd(nextAd) },
     onFallback: (message, track) => {
+      if (remoteRef.current) return
       setPlaybackNotice(message)
       if (!track?.spotifyUri) return
       const uri = track.spotifyUri
@@ -161,6 +171,82 @@ export default function App() {
   useEffect(() => { savePlaylists(playlists) }, [playlists])
   useEffect(() => { saveSavedTracks(catalog) }, [catalog])
   useEffect(() => { saveRecentTrackIds(recentIds) }, [recentIds])
+
+  useSpotifyFollow(spotifyReady, (playback) => {
+    if (!playback) {
+      ignoredRemoteUriRef.current = null
+      if (remoteRef.current) {
+        remoteRef.current = null
+        setRemotePlayback(null)
+        setPlaying(false)
+      }
+      return
+    }
+    const ownDevice = getSpotifyDeviceId()
+    if (ownDevice && playback.deviceId === ownDevice && !remoteRef.current) return
+    if (ignoredRemoteUriRef.current === playback.uri) return
+    ignoredRemoteUriRef.current = null
+
+    const existing = catalogRef.current.find((track) => track.spotifyUri === playback.uri)
+    const trackId = existing?.id || `spotify-${playback.track.id || playback.uri.split(':').pop()}`
+    if (!existing) {
+      const base = {
+        id: trackId,
+        title: playback.track.name,
+        artist: playback.track.artists?.map((artist) => artist.name).join(', ') || 'Unknown Artist',
+        album: playback.track.album?.name || 'Single',
+        duration: playback.duration,
+        cover: playback.track.album?.images?.[0]?.url || '',
+        source: 'spotify' as const,
+        spotifyUri: playback.uri,
+        externalUrl: playback.track.external_urls?.spotify,
+      }
+      const placeholder: Track = { ...base, tags: ['spotify'], lyrics: [{ time: 0, text: 'Loading lyrics…' }] }
+      setCatalog((tracks) => tracks.some((track) => track.spotifyUri === playback.uri) ? tracks : [placeholder, ...tracks])
+      if (!remoteResolvingRef.current.has(playback.uri)) {
+        remoteResolvingRef.current.add(playback.uri)
+        void resolveToTrack(base).then((resolved) => {
+          setCatalog((tracks) => tracks.map((track) => track.spotifyUri === playback.uri ? { ...resolved, id: track.id } : track))
+        }).catch(() => { /* the placeholder remains visible */ })
+          .finally(() => remoteResolvingRef.current.delete(playback.uri))
+      }
+    }
+
+    const previous = remoteRef.current
+    if (!previous || previous.uri !== playback.uri) {
+      setAudioError(null)
+      setAd(null)
+      setPlaybackNotice(null)
+    }
+    const expected = previous && previous.uri === playback.uri && previous.playing
+      ? previous.position + (performance.now() - previous.at) / 1000
+      : playback.position
+    const drift = playback.position - expected
+    const position = previous?.uri === playback.uri && playback.playing && Math.abs(drift) < 1.5
+      ? expected + drift * 0.35
+      : playback.position
+    const next: RemotePlayback = { ...playback, position, trackId, at: performance.now() }
+    remoteRef.current = next
+    setRemotePlayback(next)
+    setAudioDuration(playback.duration)
+    setPlaying(playback.playing)
+    setTime(position)
+    if (selectedId !== trackId) {
+      pendingRef.current = { startAt: position, play: playback.playing }
+      setSelectedId(trackId)
+    }
+  }, setSyncError)
+
+  const isFollowing = !!remotePlayback
+  useEffect(() => {
+    if (!isFollowing) return
+    const timer = window.setInterval(() => {
+      const current = remoteRef.current
+      if (!current || !current.playing) return
+      setTime(Math.min(current.duration || Infinity, current.position + (performance.now() - current.at) / 1000))
+    }, 100)
+    return () => window.clearInterval(timer)
+  }, [isFollowing])
   useEffect(() => {
     if (!selected || !playing || time < 0.5 || recordedRef.current === selected.id) return
     recordedRef.current = selected.id
@@ -192,6 +278,7 @@ export default function App() {
   const selectedSpotifyUri = selected?.spotifyUri
 
   useEffect(() => {
+    if (remotePlayback) return
     const track = catalogRef.current.find((t) => t.id === selectedId)
     if (!track) return
 
@@ -250,7 +337,7 @@ export default function App() {
       resolving.delete(track.id)
       setPendingSpotify((p) => (p === track.id ? null : p))
     }
-  }, [selectedId, selectedSpotifyUri, selectedYoutubeId, selectedAudioUrl, providerVersion, spotifyReady])
+  }, [selectedId, selectedSpotifyUri, selectedYoutubeId, selectedAudioUrl, providerVersion, spotifyReady, remotePlayback])
 
   const prepareTrack = (t: Track) => {
     if (!t.spotifyUri && canUseSpotifyPlayback() && !spotifyTriedRef.current.has(t.id)) {
@@ -261,6 +348,9 @@ export default function App() {
   }
 
   const openTrack = (t: Track, startAt = 0) => {
+    ignoredRemoteUriRef.current = remoteRef.current?.uri || null
+    remoteRef.current = null
+    setRemotePlayback(null)
     prepareTrack(t)
     setCatalog((c) => c.some((x) => x.id === t.id) ? c.map((x) => x.id === t.id ? t : x) : [t, ...c])
     if (t.id === selectedId) {
@@ -278,6 +368,10 @@ export default function App() {
 
   const currentIndex = catalog.findIndex((t) => t.id === selectedId)
   const next = () => {
+    if (remoteRef.current) {
+      void spotifyFetch('/me/player/next', { method: 'POST' }).catch((error) => setPlaybackNotice(error?.message || 'Could not skip on Spotify.'))
+      return
+    }
     if (!catalog.length) return
     const target = catalog[(currentIndex + 1 + catalog.length) % catalog.length]
     prepareTrack(target)
@@ -286,6 +380,10 @@ export default function App() {
     setSelectedId(target.id)
   }
   const prev = () => {
+    if (remoteRef.current) {
+      void spotifyFetch('/me/player/previous', { method: 'POST' }).catch((error) => setPlaybackNotice(error?.message || 'Could not skip on Spotify.'))
+      return
+    }
     if (!catalog.length) return
     const target = catalog[(currentIndex - 1 + catalog.length) % catalog.length]
     prepareTrack(target)
@@ -318,6 +416,15 @@ export default function App() {
     }
   }
 
+  const onSpotifyReadyChange = (ready: boolean) => {
+    setSpotifyReady(ready)
+    if (ready) return
+    if (remoteRef.current) setPlaying(false)
+    remoteRef.current = null
+    setRemotePlayback(null)
+    setSyncError(null)
+  }
+
   const onCreatePlaylist = (name: string) => {
     const playlist = createPlaylist(name)
     setPlaylists((list) => [...list, playlist])
@@ -332,6 +439,33 @@ export default function App() {
   }
 
   const playbackDuration = audioDuration || selected?.duration || 0
+
+  const togglePlayback = () => {
+    const remote = remoteRef.current
+    if (!remote) { setPlaying((value) => !value); return }
+    const next = { ...remote, playing: !remote.playing, position: time, at: performance.now() }
+    remoteRef.current = next
+    setRemotePlayback(next)
+    setPlaying(next.playing)
+    void spotifyFetch(next.playing ? '/me/player/play' : '/me/player/pause', { method: 'PUT' })
+      .catch((error) => {
+        remoteRef.current = remote
+        setRemotePlayback(remote)
+        setPlaying(remote.playing)
+        setPlaybackNotice(error?.message || 'Could not control Spotify on this device.')
+      })
+  }
+
+  const seekPlayback = (seconds: number) => {
+    const remote = remoteRef.current
+    if (!remote) { seek(seconds); return }
+    const next = { ...remote, position: seconds, at: performance.now() }
+    remoteRef.current = next
+    setRemotePlayback(next)
+    setTime(seconds)
+    void spotifyFetch(`/me/player/seek?position_ms=${Math.max(0, Math.round(seconds * 1000))}`, { method: 'PUT' })
+      .catch((error) => setPlaybackNotice(error?.message || 'Could not seek on Spotify.'))
+  }
 
   const liveHealth = useMemo(() => {
     if (!selected) return null
@@ -382,7 +516,7 @@ export default function App() {
                 {connectingSpotify ? 'Opening Spotify…' : 'Reconnect Spotify for playback'}
               </button>
             ) : (
-              <span className="spotify-chip"><span className="spotify-dot" aria-hidden="true" />Spotify connected</span>
+              <span className="spotify-chip"><span className="spotify-dot" aria-hidden="true" />{remotePlayback ? `Following ${remotePlayback.deviceName}` : 'Spotify connected'}</span>
             )}
           </div>
           <div className="main-body">
@@ -402,7 +536,7 @@ export default function App() {
                 onAddTrack={addToPlaylist}
                 onRemoveTrack={removeFromPlaylist}
                 spotifyReady={spotifyReady}
-                onSpotifyReadyChange={setSpotifyReady}
+                onSpotifyReadyChange={onSpotifyReadyChange}
                 spotifyError={spotifyError}
                 onDismissSpotifyError={() => setSpotifyError(null)}
               />
@@ -412,6 +546,7 @@ export default function App() {
         </main>
 
         <aside className="panel rightbar">
+          {syncError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{syncError} <button className="link" onClick={() => void connectSpotify()}>Reconnect</button></div>}
           {audioError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{audioError}</div>}
           {playbackNotice && <div className="notice" style={{ margin: '4px 10px 0' }}>{playbackNotice}</div>}
           {!hasBackend && selected && !selected.youtubeId && !selected.spotifyUri && (
@@ -421,7 +556,7 @@ export default function App() {
           )}
           {!hasBackend && <ProviderSetup onSaved={onProvidersSaved} />}
           <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
-          {selected?.youtubeId && (
+          {selected?.youtubeId && !remotePlayback && (
             <div className="youtube-box">
               <div className="section-title">Audio source</div>
               <a className="yt-source" href={`https://www.youtube.com/watch?v=${selected.youtubeId}`} target="_blank" rel="noreferrer">
@@ -439,18 +574,19 @@ export default function App() {
           <div className="np-meta">
             <div className="t">{selected?.title ?? 'Nothing playing'}</div>
             <div className="a">{selected ? `${selected.artist} • ${selected.album}` : 'Search a song to start'}</div>
+            {remotePlayback && <div className="remote-label">Playing on {remotePlayback.deviceName} · lyrics follow here</div>}
           </div>
         </div>
         <div className="transport">
           <div className="controls">
             <button className="icon-btn" onClick={prev} title="Previous">⏮</button>
-            <button className="icon-btn play" onClick={() => selected && setPlaying((p) => !p)} disabled={!selected || !!ad} title={ad ? 'Waiting for the ad to finish' : 'Play/Pause'}>{playing ? '❚❚' : '▶'}</button>
+            <button className="icon-btn play" onClick={togglePlayback} disabled={!selected || !!ad} title={ad ? 'Waiting for the ad to finish' : 'Play/Pause'}>{playing ? '❚❚' : '▶'}</button>
             <button className="icon-btn" onClick={next} title="Next">⏭</button>
           </div>
           {ad && <AdBar ad={ad} />}
           <div className="progress">
             <span>{formatTime(time)}</span>
-            <input className="range" type="range" min={0} max={playbackDuration || 300} step={0.05} value={Math.min(time, playbackDuration || 300)} onChange={(e) => seek(Number(e.target.value))} disabled={!!ad} />
+            <input className="range" type="range" min={0} max={playbackDuration || 300} step={0.05} value={Math.min(time, playbackDuration || 300)} onChange={(e) => seekPlayback(Number(e.target.value))} disabled={!!ad} />
             <span>{formatTime(playbackDuration)}</span>
           </div>
         </div>
@@ -477,8 +613,8 @@ export default function App() {
           ad={ad}
           onDelayChange={updateDelay}
           onClose={() => setFullscreen(false)}
-          onTogglePlay={() => setPlaying((p) => !p)}
-          onSeek={seek}
+          onTogglePlay={togglePlayback}
+          onSeek={seekPlayback}
         />
       )}
     </div>

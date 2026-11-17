@@ -1,0 +1,60 @@
+import { useEffect, useRef } from 'react'
+import { getSpotifyActivePlayback, SpotifyApiError, type SpotifyActivePlayback } from './spotify'
+
+/** Keep the open page aligned with the account's active Spotify Connect device. */
+export function useSpotifyFollow(
+  ready: boolean,
+  onPlayback: (playback: SpotifyActivePlayback | null) => void,
+  onError: (message: string | null) => void,
+) {
+  const callbacks = useRef({ onPlayback, onError })
+  useEffect(() => { callbacks.current = { onPlayback, onError } })
+
+  useEffect(() => {
+    if (!ready) return
+    let stopped = false
+    let pending = false
+    let timer = 0
+
+    const poll = async () => {
+      if (stopped || pending) return
+      pending = true
+      let wait = document.hidden ? 15_000 : 4_000
+      try {
+        const playback = await getSpotifyActivePlayback()
+        if (!stopped) {
+          callbacks.current.onError(null)
+          callbacks.current.onPlayback(playback)
+        }
+      } catch (error) {
+        if (!stopped) {
+          if (error instanceof SpotifyApiError && error.status === 403) {
+            callbacks.current.onError('Spotify denied playback sync. Reconnect or check your app access.')
+            wait = 30_000
+          } else if (error instanceof SpotifyApiError && error.status === 429) {
+            wait = 30_000
+          } else {
+            wait = document.hidden ? 20_000 : 8_000
+          }
+        }
+      } finally {
+        pending = false
+        if (!stopped) timer = window.setTimeout(poll, wait)
+      }
+    }
+
+    const onVisible = () => {
+      if (document.hidden || pending) return
+      window.clearTimeout(timer)
+      void poll()
+    }
+
+    void poll()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      stopped = true
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [ready])
+}

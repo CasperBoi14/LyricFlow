@@ -40,6 +40,16 @@ export type SpotifyTrack = {
   type?: string
 }
 
+export type SpotifyActivePlayback = {
+  track: SpotifyTrack
+  uri: string
+  position: number
+  duration: number
+  playing: boolean
+  deviceId: string | null
+  deviceName: string
+}
+
 export class SpotifyApiError extends Error {
   readonly status: number
   constructor(message: string, status: number) { super(message); this.status = status }
@@ -317,6 +327,34 @@ export async function spotifyFetch(path: string, init: RequestInit = {}): Promis
     throw new Error(message || `Spotify request failed (${res.status})`)
   }
   return res
+}
+
+/** The account's active Spotify Connect device, which may be a phone or speaker. */
+export async function getSpotifyActivePlayback(): Promise<SpotifyActivePlayback | null> {
+  const res = await authorizedFetch('/me/player', { cache: 'no-store' })
+  if (res.status === 204) return null
+  if (!res.ok) {
+    const data = await res.json().catch(() => null) as { error?: { message?: string } } | null
+    throw new SpotifyApiError(data?.error?.message || `Spotify playback state failed (${res.status})`, res.status)
+  }
+  const data = await res.json() as {
+    item?: SpotifyTrack | null
+    currently_playing_type?: string
+    progress_ms?: number | null
+    is_playing?: boolean
+    device?: { id?: string | null; name?: string } | null
+  }
+  const track = data.item
+  if ((data.currently_playing_type && data.currently_playing_type !== 'track') || !track?.uri?.startsWith('spotify:track:')) return null
+  return {
+    track,
+    uri: track.uri,
+    position: Math.max(0, Number(data.progress_ms || 0) / 1000),
+    duration: Math.max(0, Number(track.duration_ms || 0) / 1000),
+    playing: !!data.is_playing,
+    deviceId: data.device?.id || null,
+    deviceName: data.device?.name || 'Spotify device',
+  }
 }
 
 /** Find the Spotify URI for a searched song so it can be played through the user's account. */

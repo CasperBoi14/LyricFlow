@@ -17,6 +17,8 @@ type Options = {
   track: Track | null
   playing: boolean
   spotifyReady: boolean
+  /** Show an external Spotify device without starting local audio. */
+  externalPlayback?: boolean
   /** Hold audio until the app has chosen between Spotify and YouTube. */
   holdPlayback?: boolean
   onTime: (t: number) => void
@@ -106,7 +108,7 @@ export function useAudioEngine(opts: Options) {
   useEffect(() => {
     const track = opts.track
     const spotifyAllowed = !!track?.spotifyUri && canUseSpotifyPlayback() && !isSpotifyUriBlocked(track.spotifyUri)
-    const key = spotifyAllowed
+    const key = opts.externalPlayback ? 'external' : spotifyAllowed
       ? `spotify:${track!.spotifyUri}`
       : ytId ? `yt:${ytId}`
         : audioUrl ? `audio:${audioUrl}`
@@ -234,6 +236,12 @@ export function useAudioEngine(opts: Options) {
       }
     }
 
+    if (key === 'external') {
+      pendingYt.current = null
+      audioRef.current?.removeAttribute('src')
+      return
+    }
+
     if (!track) {
       pendingYt.current = null
       audioRef.current?.removeAttribute('src')
@@ -301,7 +309,7 @@ export function useAudioEngine(opts: Options) {
     cb.current.onTime(0)
     cb.current.onDuration(0)
     if (isDemo) { simulate.current = true; simTime.current = 0 }
-  }, [spotifyUri, ytId, audioUrl, isDemo, hold, opts.track, opts.spotifyReady])
+  }, [spotifyUri, ytId, audioUrl, isDemo, hold, opts.track, opts.spotifyReady, opts.externalPlayback])
 
   useEffect(() => {
     const key = sourceKey.current

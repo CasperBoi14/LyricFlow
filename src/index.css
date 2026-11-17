@@ -183,6 +183,7 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
 .np-meta { min-width: 0; }
 .np-meta .t { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-meta .a { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.remote-label { color: #9de7c9; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .transport { display: flex; flex-direction: column; gap: 5px; align-items: center; min-width: 0; }
 .controls { display: flex; align-items: center; gap: 6px; }
 .icon-btn {

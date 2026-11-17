@@ -95,6 +95,10 @@ export function getSpotifySnapshot(): SpotifySnapshot | null {
   return snapshot
 }
 
+export function getSpotifyDeviceId(): string | null {
+  return deviceId
+}
+
 export function refreshSpotifyState() {
   const current = player
   if (!current?.getCurrentState) return
