@@ -15,6 +15,8 @@ const DIST = path.resolve(process.env.STATIC_DIR || path.join(ROOT, 'dist'))
 const PORT = Number(process.env.PORT) || 8787
 const HOST = process.env.HOST || '0.0.0.0'
 const BODY_LIMIT = 25 * 1024 * 1024
+const CORS_ORIGINS = new Set((process.env.CORS_ORIGIN || 'https://casperboi14.github.io,http://127.0.0.1:5173,http://localhost:5173')
+  .split(',').map((origin) => origin.trim()).filter(Boolean))
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -36,8 +38,12 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 }
 
-function setCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+function setCors(req, res) {
+  const origin = req.headers.origin
+  if (origin && (CORS_ORIGINS.has(origin) || CORS_ORIGINS.has('*'))) {
+    res.setHeader('Access-Control-Allow-Origin', CORS_ORIGINS.has('*') ? '*' : origin)
+    res.setHeader('Vary', 'Origin')
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   res.setHeader('Access-Control-Max-Age', '86400')
@@ -45,7 +51,6 @@ function setCors(res) {
 
 function json(res, status, body) {
   const payload = JSON.stringify(body)
-  setCors(res)
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(payload),
@@ -100,7 +105,6 @@ async function identify(req, res) {
 
 async function handleApi(req, res, url) {
   if (req.method === 'OPTIONS') {
-    setCors(res)
     res.writeHead(204)
     res.end()
     return true
@@ -237,6 +241,7 @@ async function serveStatic(req, res, url) {
 }
 
 const server = http.createServer(async (req, res) => {
+  setCors(req, res)
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
   try {
     if (url.pathname.startsWith('/api/')) {

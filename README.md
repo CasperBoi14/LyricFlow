@@ -59,6 +59,19 @@ npm ci
 npm run dev
 ```
 
+## Use a backend on another computer
+
+Build the site and run `node --env-file=backend/.env server.mjs` on the computer
+hosting LyricFlow. The server serves both the website and API on port 8787 by
+default. Other devices on the same network can open `http://<server-ip>:8787/`.
+Spotify sign-in needs HTTPS (or a loopback address), so use the GitHub Pages
+site with an HTTPS backend address for Spotify on other devices.
+
+To point the GitHub Pages site at an HTTPS backend, open it once with
+`?api=https://your-backend.example.com`. LyricFlow saves that address in this
+browser, including across Spotify sign-in redirects. Use `?api=off` to clear it.
+The backend must allow `https://casperboi14.github.io` in `CORS_ORIGIN`.
+
 ## Production build
 
 ```sh

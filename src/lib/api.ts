@@ -1,4 +1,19 @@
-const configuredBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '')
+const API_BASE_KEY = 'lf-api-base-url'
+const queryBase = new URLSearchParams(window.location.search).get('api')
+
+if (queryBase !== null) {
+  if (queryBase === 'off') localStorage.removeItem(API_BASE_KEY)
+  else {
+    try {
+      const url = new URL(queryBase)
+      if (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) {
+        localStorage.setItem(API_BASE_KEY, url.origin)
+      }
+    } catch { /* Ignore an invalid address and keep the current setting. */ }
+  }
+}
+
+const configuredBase = (localStorage.getItem(API_BASE_KEY) || (import.meta.env.VITE_API_BASE_URL as string | undefined))?.replace(/\/+$/, '')
 
 export const apiBaseUrl = configuredBase || ''
 
