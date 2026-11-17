@@ -38,7 +38,8 @@ the same origin, which is useful when one server hosts both `dist` and `/api`.
 
 For an always available public backend, import this repository into Vercel. The
 root `api/` directory contains the API functions; `vercel.json` selects Vite
-and the `dist` output. Verify `https://<project>.vercel.app/api/health`, then set
+and the `dist` output. In Vercel's project settings, leave Root Directory empty
+so the repository root is deployed. Verify `https://<project>.vercel.app/api/health`, then set
 the GitHub Actions repository variable `VITE_API_BASE_URL` to that Vercel origin
 and run the Pages workflow. The deployed address replaces any temporary tunnel
 saved by an earlier `?api=` link. Set `SPOTIFY_CLIENT_ID` and
