@@ -1,7 +1,8 @@
 import type { LyricLine, Track, SearchResult } from '../types'
 import { parseLrc } from './lyrics'
+import { apiUrl, hasBackend } from './api'
 
-const API = import.meta.env.DEV ? '/api/lyrics' : 'https://lrclib.net/api'
+const DIRECT_API = 'https://lrclib.net/api'
 
 function coverFor(seed: string) {
   const hues = [200, 260, 330, 160, 20, 45]
@@ -30,12 +31,38 @@ function toTrack(base: Partial<Track> & { title: string; artist: string; id: str
   }
 }
 
+async function searchRecords(query: string): Promise<any[]> {
+  if (hasBackend) {
+    try {
+      const res = await fetch(apiUrl(`/api/lyrics/search?q=${encodeURIComponent(query)}`))
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) return data
+      }
+    } catch { /* fall back to LRCLIB directly */ }
+  }
+  const res = await fetch(`${DIRECT_API}/search?q=${encodeURIComponent(query)}`)
+  if (!res.ok) throw new Error('Lyrics search failed')
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+async function getRecord(params: URLSearchParams): Promise<any | null> {
+  if (hasBackend) {
+    try {
+      const res = await fetch(apiUrl(`/api/lyrics/get?${params.toString()}`))
+      if (res.ok) return await res.json()
+    } catch { /* fall back to LRCLIB directly */ }
+  }
+  const res = await fetch(`${DIRECT_API}/get?${params.toString()}`)
+  if (!res.ok) return null
+  return await res.json().catch(() => null)
+}
+
 export async function searchLyrics(query: string): Promise<SearchResult[]> {
   const q = query.trim()
   if (!q) return []
-  const res = await fetch(`${API}/search?q=${encodeURIComponent(q)}`)
-  if (!res.ok) throw new Error('Lyrics search failed')
-  const data = await res.json() as any[]
+  const data = await searchRecords(q)
   return (data || []).slice(0, 20).map((r) => ({
     id: `lrclib-${r.id}`,
     title: r.trackName || r.name || 'Unknown',
@@ -51,16 +78,12 @@ export async function getLyricsFor(artist: string, title: string, album = '', du
   const params = new URLSearchParams({ artist_name: artist, track_name: title })
   if (album) params.set('album_name', album)
   if (durationSec) params.set('duration', String(Math.round(durationSec)))
-  let res = await fetch(`${API}/get?${params.toString()}`)
-  if (!res.ok) {
-    const sr = await fetch(`${API}/search?q=${encodeURIComponent(artist + ' ' + title)}`)
-    if (!sr.ok) throw new Error('Lyrics not found')
-    const arr = await sr.json() as any[]
-    const best = arr?.[0]
-    if (!best) throw new Error('Lyrics not found')
-    return fromRecord(best)
-  }
-  return fromRecord(await res.json())
+  const exact = await getRecord(params)
+  if (exact) return fromRecord(exact)
+  const arr = await searchRecords(`${artist} ${title}`)
+  const best = arr?.[0]
+  if (!best) throw new Error('Lyrics not found')
+  return fromRecord(best)
 }
 
 function fromRecord(r: any) {

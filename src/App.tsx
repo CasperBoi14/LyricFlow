@@ -10,6 +10,7 @@ import { tracks as demoTracks } from './data/tracks'
 import type { AppView, Track } from './types'
 import { formatTime } from './lib/lyrics'
 import { findAudioSource } from './lib/audio'
+import { hasBackend } from './lib/api'
 import { useAudioEngine } from './lib/useAudioEngine'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
 import { completeSpotifyLogin, hasSpotifyAuth } from './lib/spotify'
@@ -280,6 +281,9 @@ export default function App() {
           {audioError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{audioError}</div>}
           {selected?.source === 'demo' && (
             <div className="notice" style={{ margin: '4px 10px 0' }}>Demo track · simulated playback. Search a real song for full audio.</div>
+          )}
+          {!hasBackend && selected && selected.source !== 'demo' && !selected.youtubeId && (
+            <div className="notice" style={{ margin: '4px 10px 0' }}>Full songs need the API backend. Playing 30-second previews until it is connected.</div>
           )}
           <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} />
           {selected?.youtubeId && (

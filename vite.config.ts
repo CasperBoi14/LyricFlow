@@ -1,8 +1,10 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
-import { Shazam, NoMatchesFoundError } from 'shazamio-api'
-
-const shazam = new Shazam()
+import { AudioFindError, findAudioSource } from './shared/audio-find.mjs'
+import { IdentifyError, identifySong } from './shared/identify.mjs'
+import { getLyrics, LyricsError, searchLyrics } from './shared/lyrics.mjs'
+import { MusicSearchError, searchMusic } from './shared/music-search.mjs'
+import { exchangeSpotifyToken } from './shared/spotify-token.mjs'
 
 function readJson(req: any): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -13,6 +15,10 @@ function readJson(req: any): Promise<any> {
   })
 }
 const send = (res: any, code: number, obj: any) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(obj)) }
+const sendError = (res: any, error: any, fallback: string) => {
+  const status = typeof error?.statusCode === 'number' ? error.statusCode : 502
+  send(res, status, { error: error?.message || fallback })
+}
 
 function apiPlugin(): Plugin {
   return {
@@ -24,69 +30,68 @@ function apiPlugin(): Plugin {
           if (url.startsWith('/api/spotify/token')) {
             if (req.method !== 'POST') { send(res, 405, { error: 'Method Not Allowed' }); return }
             const body = await readJson(req)
-            const form = new URLSearchParams()
-            for (const [k, v] of Object.entries(body || {})) {
-              if (v != null) form.set(k, String(v))
-            }
-            const r = await fetch('https://accounts.spotify.com/api/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: form.toString(),
+            const result = await exchangeSpotifyToken(body, {
+              clientId: process.env.SPOTIFY_CLIENT_ID,
+              clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
             })
-            send(res, r.status, await r.json().catch(() => ({ error: 'token_exchange_failed' }))); return
+            send(res, result.statusCode, result.body); return
           }
           if (url.startsWith('/api/lyrics/search')) {
-            const q = new URL(url, 'http://x').searchParams.get('q') || ''
-            const r = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Lyricflow/1.0' } })
-            send(res, r.status, await r.json().catch(()=>[])); return
+            if (req.method !== 'GET') { send(res, 405, { error: 'Method Not Allowed' }); return }
+            const q = (new URL(url, 'http://x').searchParams.get('q') || '').trim()
+            try {
+              const data = await searchLyrics(q)
+              res.setHeader('X-Lyrics-Provider', 'LRCLIB')
+              send(res, 200, data); return
+            } catch (e: any) {
+              sendError(res, e instanceof LyricsError ? e : null, 'Lyrics search failed'); return
+            }
           }
           if (url.startsWith('/api/lyrics/get')) {
+            if (req.method !== 'GET') { send(res, 405, { error: 'Method Not Allowed' }); return }
             const sp = new URL(url, 'http://x').searchParams
-            const r = await fetch(`https://lrclib.net/api/get?${sp.toString()}`, { headers: { 'User-Agent': 'Lyricflow/1.0' } })
-            if (!r.ok) { send(res, r.status, { error: 'not found' }); return }
-            send(res, 200, await r.json()); return
+            const params: Record<string, string> = {}
+            for (const key of ['id', 'artist_name', 'track_name', 'album_name', 'duration']) {
+              const value = sp.get(key)
+              if (value !== null) params[key] = value
+            }
+            try {
+              const data = await getLyrics(params)
+              res.setHeader('X-Lyrics-Provider', 'LRCLIB')
+              send(res, 200, data); return
+            } catch (e: any) {
+              sendError(res, e instanceof LyricsError ? e : null, 'Lyrics lookup failed'); return
+            }
           }
           if (url.startsWith('/api/music/search')) {
-            const q = new URL(url, 'http://x').searchParams.get('q') || ''
-            const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&limit=20`)
-            send(res, r.status, await r.json().catch(()=>({results:[]}))); return
+            if (req.method !== 'GET') { send(res, 405, { error: 'Method Not Allowed' }); return }
+            const q = (new URL(url, 'http://x').searchParams.get('q') || '').trim()
+            try {
+              send(res, 200, await searchMusic(q)); return
+            } catch (e: any) {
+              sendError(res, e instanceof MusicSearchError ? e : null, 'Music search failed'); return
+            }
           }
           if (url.startsWith('/api/audio/find')) {
-            const q = new URL(url, 'http://x').searchParams.get('q') || ''
+            if (req.method !== 'GET') { send(res, 405, { error: 'Method Not Allowed' }); return }
+            const q = (new URL(url, 'http://x').searchParams.get('q') || '').trim()
             if (!q) { send(res, 400, { error: 'Missing query' }); return }
-            const r = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&sp=EgIQAQ%253D%253D`, {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-              },
-            })
-            const html = await r.text()
-            const m = html.match(/"videoRenderer":\{"videoId":"([\w-]{11})"/)
-            if (!m) { send(res, 404, { error: 'No playable track found' }); return }
-            send(res, 200, { videoId: m[1], thumbnail: `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg` }); return
+            try {
+              const source = await findAudioSource(q, { youtubeApiKey: process.env.YOUTUBE_API_KEY })
+              send(res, 200, source); return
+            } catch (e: any) {
+              const status = e instanceof AudioFindError ? e.statusCode : 502
+              send(res, status, { error: e?.message || 'Audio source lookup failed' }); return
+            }
           }
           if (url.startsWith('/api/identify')) {
             if (req.method !== 'POST') { send(res, 405, { error: 'Method Not Allowed' }); return }
             const body = await readJson(req)
-            const sample = body?.sample as string
-            if (!sample) { send(res, 400, { error: 'No audio sample' }); return }
-            const buf = Buffer.from(sample, 'base64')
+            const sample = typeof body?.sample === 'string' ? body.sample : ''
             try {
-              const result = await shazam.recognize(buf)
-              const track: any = result?.track
-              if (!track?.title) { send(res, 404, { error: 'No match found' }); return }
-              const action = (track.hub?.actions || []).find((a: any) => a?.type === 'uri')
-              send(res, 200, {
-                title: track.title,
-                artist: track.subtitle || 'Unknown Artist',
-                album: track.sections?.find((s: any) => s?.type === 'SONG')?.metadata?.find((m: any) => m?.title === 'Album')?.text || '',
-                cover: track.images?.coverart || '',
-                url: action?.uri || '',
-                provider: 'shazam',
-              }); return
+              send(res, 200, await identifySong(sample)); return
             } catch (e: any) {
-              if (e instanceof NoMatchesFoundError) { send(res, 404, { error: 'No match found' }); return }
-              send(res, 502, { error: e?.message || 'Shazam recognition failed' }); return
+              sendError(res, e instanceof IdentifyError ? e : null, 'Recognition failed'); return
             }
           }
         } catch (e: any) {
@@ -100,7 +105,13 @@ function apiPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
+  root: 'src',
+  publicDir: '../public',
   base: process.env.GITHUB_ACTIONS ? '/LyricFlow/' : '/',
+  build: {
+    outDir: '../dist',
+    emptyOutDir: true,
+  },
   plugins: [react(), apiPlugin()],
 })
 

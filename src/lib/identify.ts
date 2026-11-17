@@ -1,3 +1,5 @@
+import { apiUrl, hasBackend } from './api'
+
 export type IdentifyMatch = {
   title: string
   artist: string
@@ -20,11 +22,11 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export async function identifyRecorded(blob: Blob): Promise<IdentifyMatch> {
-  if (!import.meta.env.DEV) {
-    throw new Error('Song identification is unavailable on the static GitHub Pages build.')
+  if (!hasBackend) {
+    throw new Error('Song identification needs the API backend.')
   }
   const sample = await blobToBase64(blob)
-  const res = await fetch('/api/identify', {
+  const res = await fetch(apiUrl('/api/identify'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sample }),

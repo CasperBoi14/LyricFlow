@@ -136,7 +136,7 @@ export function useAudioEngine(opts: Options) {
       el.src = audioUrl
       el.onloadedmetadata = () => cb.current.onDuration(el.duration || 0)
       el.onended = () => { cb.current.onPlayingChange(false); cb.current.onEnded() }
-      el.onerror = () => { cb.current.onError('Audio preview unavailable.'); cb.current.onPlayingChange(false) }
+      el.onerror = () => { cb.current.onError('Audio source unavailable.'); cb.current.onPlayingChange(false) }
       el.load()
       cb.current.onTime(0)
       cb.current.onDuration(0)

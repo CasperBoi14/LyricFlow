@@ -1,3 +1,5 @@
+import { apiUrl, hasBackend } from './api'
+
 export type SpotifyTokens = { access_token: string; refresh_token?: string; expires_at: number }
 
 export type SpotifyProfile = {
@@ -81,7 +83,8 @@ export function disconnectSpotify() {
 }
 
 async function tokenRequest(body: Record<string, string>) {
-  const res = await fetch(import.meta.env.DEV ? '/api/spotify/token' : 'https://accounts.spotify.com/api/token', {
+  const tokenUrl = hasBackend ? apiUrl('/api/spotify/token') : 'https://accounts.spotify.com/api/token'
+  const res = await fetch(tokenUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

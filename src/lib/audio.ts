@@ -1,4 +1,16 @@
+import { apiUrl, hasBackend } from './api'
+
 export type AudioSource = { youtubeId?: string; audioUrl?: string; cover?: string }
+
+type SourceResponse = {
+  youtubeId?: string
+  videoId?: string
+  audioUrl?: string
+  streamUrl?: string
+  url?: string
+  cover?: string
+  thumbnail?: string
+}
 
 let ytApi: Promise<any> | null = null
 
@@ -27,15 +39,34 @@ export function loadYouTubeApi(): Promise<any> {
   return ytApi
 }
 
-export async function findAudioSource(title: string, artist: string): Promise<AudioSource> {
-  const q = `${title} ${artist}`.trim()
-
+async function backendSource(query: string): Promise<AudioSource | null> {
+  if (!hasBackend) return null
   try {
-    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&limit=20`)
+    const res = await fetch(apiUrl(`/api/audio/find?q=${encodeURIComponent(`${query} official audio`)}`))
+    const data = await res.json().catch(() => null) as SourceResponse | null
+    if (!res.ok || !data) return null
+    const youtubeId = data.youtubeId || data.videoId
+    const audioUrl = data.audioUrl || data.streamUrl || data.url
+    if (!youtubeId && !audioUrl) return null
+    return { youtubeId, audioUrl, cover: data.cover || data.thumbnail }
+  } catch {
+    return null
+  }
+}
+
+async function previewSource(query: string): Promise<AudioSource> {
+  try {
+    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=20`)
     const data = await res.json().catch(() => ({}))
     const hit = (data.results || []).find((r: any) => r?.previewUrl)
     if (hit) return { audioUrl: hit.previewUrl, cover: hit.artworkUrl100 || undefined }
-  } catch { /* no audio */ }
-
+  } catch { /* no preview available */ }
   return {}
+}
+
+export async function findAudioSource(title: string, artist: string): Promise<AudioSource> {
+  const q = `${title} ${artist}`.trim()
+  const full = await backendSource(q)
+  if (full) return full
+  return previewSource(q)
 }
