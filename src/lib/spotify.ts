@@ -178,7 +178,7 @@ async function resolveAuthorizeUrl(clientId: string, state: string, challenge: s
   }
   if (!clientId) {
     throw new Error(hasBackend
-      ? 'Spotify is not configured on the server. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.'
+      ? 'Spotify is not configured on the server. Set SPOTIFY_CLIENT_ID.'
       : 'Add your Spotify Client ID first.')
   }
   const params = new URLSearchParams({
