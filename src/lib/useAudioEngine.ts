@@ -16,6 +16,7 @@ import {
 type Options = {
   track: Track | null
   playing: boolean
+  spotifyReady: boolean
   /** Hold audio until the app has chosen between Spotify and YouTube. */
   holdPlayback?: boolean
   onTime: (t: number) => void
@@ -60,6 +61,9 @@ export function useAudioEngine(opts: Options) {
 
   const spPosition = useRef(0)
   const spPausedByUser = useRef(false)
+  const spStarted = useRef(false)
+  const spReady = useRef(false)
+  const spStarting = useRef(false)
   const spEnded = useRef(false)
   const spLastPoll = useRef(0)
 
@@ -121,6 +125,9 @@ export function useAudioEngine(opts: Options) {
     expectedDuration.current = track?.duration || 0
     spPosition.current = 0
     spPausedByUser.current = false
+    spStarted.current = false
+    spReady.current = false
+    spStarting.current = false
     spEnded.current = false
     simulate.current = false
 
@@ -258,11 +265,22 @@ export function useAudioEngine(opts: Options) {
           fallbackToYoutube('Spotify playback is unavailable — using YouTube for this track.', uri)
           return
         }
+        spReady.current = true
         try {
-          if (playingRef.current) await spotifyPlayUri(uri, 0)
+          if (playingRef.current) {
+            spStarting.current = true
+            await spotifyPlayUri(uri, 0)
+            if (lifetime.current !== life || sourceKey.current !== key || !playingRef.current) {
+              await spotifyPausePlayback()
+              return
+            }
+            spStarted.current = true
+          }
         } catch {
           if (lifetime.current !== life || sourceKey.current !== key) return
           fallbackToYoutube('Spotify could not play this track — using YouTube instead.', uri)
+        } finally {
+          spStarting.current = false
         }
       })()
       return
@@ -283,7 +301,7 @@ export function useAudioEngine(opts: Options) {
     cb.current.onTime(0)
     cb.current.onDuration(0)
     if (isDemo) { simulate.current = true; simTime.current = 0 }
-  }, [spotifyUri, ytId, audioUrl, isDemo, hold, opts.track])
+  }, [spotifyUri, ytId, audioUrl, isDemo, hold, opts.track, opts.spotifyReady])
 
   useEffect(() => {
     const key = sourceKey.current
@@ -291,8 +309,19 @@ export function useAudioEngine(opts: Options) {
       const uri = key.slice('spotify:'.length)
       if (!opts.playing) {
         spPausedByUser.current = true
-        void spotifyPausePlayback()
-      } else if (spPausedByUser.current) {
+        if (spStarted.current) void spotifyPausePlayback()
+      } else if (!spStarted.current && spReady.current && !spStarting.current) {
+        spStarting.current = true
+        void spotifyPlayUri(uri, spPosition.current).then(() => {
+          if (sourceKey.current !== key) return
+          spStarted.current = true
+          if (!playingRef.current) void spotifyPausePlayback()
+        }).catch(() => {
+          if (sourceKey.current !== key) return
+          cb.current.onPlayingChange(false)
+          cb.current.onError('Spotify could not play this track. Try again.')
+        }).finally(() => { spStarting.current = false })
+      } else if (spPausedByUser.current && spStarted.current) {
         spPausedByUser.current = false
         void spotifyPlayUri(uri, spPosition.current).catch(() => {
           cb.current.onError('Spotify could not resume. Press play to try again.')
@@ -332,7 +361,7 @@ export function useAudioEngine(opts: Options) {
           refreshSpotifyState()
         }
         const snapshot = getSpotifySnapshot()
-        if (snapshot) {
+        if (snapshot?.uri === key.slice('spotify:'.length)) {
           let position = snapshot.position
           if (!snapshot.paused) position += (performance.now() - snapshot.at) / 1000
           if (snapshot.duration > 0) position = Math.min(snapshot.duration, position)

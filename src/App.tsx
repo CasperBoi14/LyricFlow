@@ -15,7 +15,7 @@ import { hasBackend } from './lib/api'
 import { useAudioEngine } from './lib/useAudioEngine'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
 import { beginSpotifyLogin, completeSpotifyLogin, findSpotifyTrack, hasSpotifyAuth, hasSpotifyPlayback } from './lib/spotify'
-import { canUseSpotifyPlayback, isSpotifyUriBlocked } from './lib/spotifyPlayer'
+import { canUseSpotifyPlayback, isSpotifyUriBlocked, resetSpotifyPlayer } from './lib/spotifyPlayer'
 import {
   createPlaylist,
   loadPlaylists,
@@ -127,6 +127,7 @@ export default function App() {
   const { seek } = useAudioEngine({
     track: selected,
     playing,
+    spotifyReady,
     holdPlayback: !!pendingSpotify && pendingSpotify === selectedId && !selected?.spotifyUri,
     onTime: setTime,
     onPlayingChange: setPlaying,
@@ -164,6 +165,8 @@ export default function App() {
     completeSpotifyLogin()
       .then((done) => {
         if (!done) return
+        resetSpotifyPlayer()
+        spotifyTriedRef.current.clear()
         setSpotifyReady(true)
         setSpotifyError(null)
         setView('library')

@@ -15,8 +15,13 @@ Spotify is connected from the app with **Connect Spotify**. The server owns the
 OAuth exchange, so the browser never sees the client secret:
 
 - `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` — create an app at
-  [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
-  Add the app origin as a Redirect URI (for local dev, `http://localhost:5173/`).
+  [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and
+  add the redirect URI the app displays under **Spotify → Redirect URI** exactly
+  as shown, trailing slash included. Spotify requires HTTPS and no longer accepts
+  `localhost`, so local dev uses `http://127.0.0.1:5173/` (the app switches over
+  from `localhost` automatically) and the deployed site needs
+  `https://casperboi14.github.io/LyricFlow/`. Register every origin you sign in
+  from; a mismatch fails with `redirect_uri: Not matching configuration`.
 - The Fastify server reads `backend/.env`; Vercel functions read the project's
   environment variables. The Vite dev server also reads `backend/.env`.
 - Playback uses the Web Playback SDK and requires Spotify Premium plus the

@@ -245,11 +245,12 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
         <p className="muted">
           {serverConfigured
             ? 'Sign in with Spotify to load your playlists and play music through the in-app player. Playback needs Spotify Premium.'
-            : 'Create an app in the Spotify developer dashboard, add the redirect URI below, then paste its Client ID. No secret is needed.'}
+            : 'Create an app in the Spotify developer dashboard, add the redirect URI below exactly as shown, then paste its Client ID. No secret is needed.'}
         </p>
         <div className="redirect-box">
           <span className="muted small">Redirect URI</span>
           <code>{spotifyRedirectTarget()}</code>
+          <span className="muted small">Must match the dashboard character for character, including the trailing slash. Spotify requires HTTPS, or 127.0.0.1 for local development.</span>
         </div>
         {serverConfigured ? (
           <button className="btn primary spotify-connect" onClick={() => void connect()} disabled={connecting}>
