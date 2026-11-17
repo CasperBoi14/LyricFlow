@@ -8,7 +8,7 @@ import { AudioFindError, findAudioSource } from './shared/audio-find.mjs'
 import { IdentifyError, identifySong } from './shared/identify.mjs'
 import { getLyrics, LyricsError, searchLyrics } from './shared/lyrics.mjs'
 import { MusicSearchError, searchMusic } from './shared/music-search.mjs'
-import { exchangeSpotifyToken } from './shared/spotify-token.mjs'
+import { exchangeSpotifyToken, spotifyPublicConfig } from './shared/spotify-token.mjs'
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url))
 const DIST = path.resolve(process.env.STATIC_DIR || path.join(ROOT, 'dist'))
@@ -161,6 +161,14 @@ async function handleApi(req, res, url) {
       const status = error instanceof LyricsError ? error.statusCode : 502
       return json(res, status, { error: error?.message || 'Lyrics lookup failed' }), true
     }
+  }
+
+  if (url.pathname === '/api/spotify/config') {
+    if (req.method !== 'GET') return json(res, 405, { error: 'Method Not Allowed' }), true
+    return json(res, 200, spotifyPublicConfig({
+      clientId: process.env.SPOTIFY_CLIENT_ID,
+      clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    })), true
   }
 
   if (url.pathname === '/api/spotify/token') {

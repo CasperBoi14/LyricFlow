@@ -12,6 +12,15 @@ function readString(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+export function spotifyPublicConfig(options = {}) {
+  const clientId = readString(options.clientId)
+  return {
+    configured: Boolean(clientId),
+    clientId: clientId || null,
+    serverTokenExchange: Boolean(clientId && readString(options.clientSecret)),
+  }
+}
+
 export async function exchangeSpotifyToken(requestBody, options = {}) {
   if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody)) {
     return fail(400, 'invalid_request', 'A JSON token request body is required')

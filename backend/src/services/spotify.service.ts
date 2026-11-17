@@ -20,6 +20,15 @@ function readString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+export function getSpotifyPublicConfig() {
+  const clientId = config.spotifyClientId
+  return {
+    configured: Boolean(clientId),
+    clientId: clientId || null,
+    serverTokenExchange: Boolean(clientId && config.spotifyClientSecret),
+  }
+}
+
 export async function exchangeSpotifyToken(body: Record<string, unknown>): Promise<SpotifyTokenResult> {
   const grantType = readString(body.grant_type)
   if (!grantType) return fail(400, 'invalid_request', 'grant_type is required')

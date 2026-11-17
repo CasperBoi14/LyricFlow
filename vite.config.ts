@@ -4,7 +4,7 @@ import { AudioFindError, findAudioSource } from './shared/audio-find.mjs'
 import { IdentifyError, identifySong } from './shared/identify.mjs'
 import { getLyrics, LyricsError, searchLyrics } from './shared/lyrics.mjs'
 import { MusicSearchError, searchMusic } from './shared/music-search.mjs'
-import { exchangeSpotifyToken } from './shared/spotify-token.mjs'
+import { exchangeSpotifyToken, spotifyPublicConfig } from './shared/spotify-token.mjs'
 
 function readJson(req: any): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -27,6 +27,13 @@ function apiPlugin(): Plugin {
       server.middlewares.use(async (req, res, next) => {
         const url = req.url || ''
         try {
+          if (url.startsWith('/api/spotify/config')) {
+            if (req.method !== 'GET') { send(res, 405, { error: 'Method Not Allowed' }); return }
+            send(res, 200, spotifyPublicConfig({
+              clientId: process.env.SPOTIFY_CLIENT_ID,
+              clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+            })); return
+          }
           if (url.startsWith('/api/spotify/token')) {
             if (req.method !== 'POST') { send(res, 405, { error: 'Method Not Allowed' }); return }
             const body = await readJson(req)

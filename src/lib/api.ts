@@ -27,3 +27,17 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return data as T
 }
+
+export async function checkBackend(): Promise<boolean> {
+  if (!hasBackend) return false
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 5000)
+  try {
+    const res = await fetch(apiUrl('/api/health'), { cache: 'no-store', signal: controller.signal })
+    return res.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}

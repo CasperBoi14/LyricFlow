@@ -29,6 +29,14 @@ export type SpotifyTokenResult = {
   body: SpotifyTokenResponse | { error: string; error_description: string }
 }
 
+export type SpotifyPublicConfig = {
+  configured: boolean
+  clientId: string | null
+  serverTokenExchange: boolean
+}
+
+export declare function spotifyPublicConfig(options?: SpotifyTokenOptions): SpotifyPublicConfig
+
 export declare function exchangeSpotifyToken(
   requestBody: SpotifyTokenRequestBody,
   options?: SpotifyTokenOptions,

@@ -21,6 +21,12 @@ export type SpotifyPlaylist = {
   external_urls?: { spotify?: string }
 }
 
+export type SpotifyServerConfig = {
+  configured: boolean
+  clientId: string | null
+  serverTokenExchange: boolean
+}
+
 export type SpotifyTrack = {
   id: string | null
   name: string
@@ -44,11 +50,47 @@ function randomString(length: number): string {
 }
 
 function redirectUri(): string {
-  return `${window.location.origin}/`
+  const configured = (import.meta.env.BASE_URL as string | undefined) || '/'
+  const base = configured.endsWith('/') ? configured : `${configured}/`
+  return new URL(base, window.location.origin).toString()
 }
 
 export function getSpotifyClientId(): string {
   return localStorage.getItem(CLIENT_KEY) || (import.meta.env.VITE_SPOTIFY_CLIENT_ID as string | undefined) || ''
+}
+
+let serverConfigPromise: Promise<SpotifyServerConfig | null> | null = null
+
+export function getSpotifyServerConfig(force = false): Promise<SpotifyServerConfig | null> {
+  if (!hasBackend) return Promise.resolve(null)
+  if (force) serverConfigPromise = null
+  if (!serverConfigPromise) {
+    serverConfigPromise = (async () => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 5000)
+      try {
+        const res = await fetch(apiUrl('/api/spotify/config'), { cache: 'no-store', signal: controller.signal })
+        if (!res.ok) return null
+        return await res.json() as SpotifyServerConfig
+      } catch {
+        return null
+      } finally {
+        clearTimeout(timer)
+      }
+    })().then((config) => {
+      if (!config) serverConfigPromise = null
+      return config
+    })
+  }
+  return serverConfigPromise
+}
+
+async function resolveSpotifyClientId(): Promise<string> {
+  if (hasBackend) {
+    const config = await getSpotifyServerConfig()
+    if (config?.clientId) return config.clientId
+  }
+  return getSpotifyClientId()
 }
 
 export function setSpotifyClientId(id: string) {
@@ -95,7 +137,7 @@ async function tokenRequest(body: Record<string, string>) {
 }
 
 export async function beginSpotifyLogin() {
-  const clientId = getSpotifyClientId()
+  const clientId = await resolveSpotifyClientId()
   if (!clientId) throw new Error('Add your Spotify Client ID first.')
   const verifier = randomString(64)
   const state = randomString(16)
@@ -136,7 +178,7 @@ export async function completeSpotifyLogin(): Promise<boolean> {
       grant_type: 'authorization_code',
       code: code as string,
       redirect_uri: redirectUri(),
-      client_id: getSpotifyClientId(),
+      client_id: await resolveSpotifyClientId(),
       code_verifier: verifier,
     })
     saveTokens({
@@ -159,7 +201,7 @@ async function getAccessToken(): Promise<string | null> {
     const fresh = await tokenRequest({
       grant_type: 'refresh_token',
       refresh_token: tokens.refresh_token,
-      client_id: getSpotifyClientId(),
+      client_id: await resolveSpotifyClientId(),
     })
     const next: SpotifyTokens = {
       access_token: fresh.access_token,
