@@ -36,7 +36,6 @@ jobs:
       - name: Build
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-          VITE_YOUTUBE_API_KEY: ${{ vars.VITE_YOUTUBE_API_KEY }}
           VITE_AUDD_API_TOKEN: ${{ vars.VITE_AUDD_API_TOKEN }}
         run: npm run build
       - name: Configure GitHub Pages

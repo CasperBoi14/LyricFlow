@@ -12,6 +12,35 @@ function readString(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+export const SPOTIFY_SCOPES = [
+  'playlist-read-private',
+  'playlist-read-collaborative',
+  'user-read-private',
+  'user-read-email',
+  'user-read-playback-state',
+  'user-modify-playback-state',
+  'streaming',
+].join(' ')
+
+/** Server-built authorize URL so the browser never has to know the client ID. */
+export function spotifyAuthorizeUrl(options = {}) {
+  const clientId = readString(options.clientId)
+  const redirectUri = readString(options.redirectUri)
+  const state = readString(options.state)
+  const codeChallenge = readString(options.codeChallenge)
+  if (!clientId || !redirectUri || !state || !codeChallenge) return null
+
+  const url = new URL('https://accounts.spotify.com/authorize')
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('redirect_uri', redirectUri)
+  url.searchParams.set('code_challenge_method', 'S256')
+  url.searchParams.set('code_challenge', codeChallenge)
+  url.searchParams.set('state', state)
+  url.searchParams.set('scope', SPOTIFY_SCOPES)
+  return url.toString()
+}
+
 export function spotifyPublicConfig(options = {}) {
   const clientId = readString(options.clientId)
   return {

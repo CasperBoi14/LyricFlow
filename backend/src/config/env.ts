@@ -42,7 +42,6 @@ export const config = {
   logLevel: readString('LOG_LEVEL', 'info'),
   bodyLimit: readNumber('BODY_LIMIT', 25 * 1024 * 1024),
   trustProxy: readBoolean('TRUST_PROXY', false),
-  youtubeApiKey: readString('YOUTUBE_API_KEY', ''),
   spotifyClientId: readString('SPOTIFY_CLIENT_ID', ''),
   spotifyClientSecret: readString('SPOTIFY_CLIENT_SECRET', ''),
   corsOrigins: readString('CORS_ORIGIN', defaultCorsOrigins.join(','))

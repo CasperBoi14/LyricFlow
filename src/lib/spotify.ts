@@ -1,6 +1,6 @@
 import { apiUrl, hasBackend } from './api'
 
-export type SpotifyTokens = { access_token: string; refresh_token?: string; expires_at: number }
+export type SpotifyTokens = { access_token: string; refresh_token?: string; expires_at: number; scope?: string }
 
 export type SpotifyProfile = {
   id: string
@@ -41,7 +41,7 @@ const CLIENT_KEY = 'lf-spotify-client'
 const TOKEN_KEY = 'lf-spotify-token'
 const VERIFIER_KEY = 'lf-spotify-verifier'
 const STATE_KEY = 'lf-spotify-state'
-const SCOPE = 'playlist-read-private playlist-read-collaborative user-read-private'
+const SCOPE = 'playlist-read-private playlist-read-collaborative user-read-private user-read-email user-read-playback-state user-modify-playback-state streaming'
 
 const b64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
@@ -102,17 +102,22 @@ export function spotifyRedirectTarget(): string {
   return redirectUri()
 }
 
+let cachedTokens: SpotifyTokens | null | undefined
+
 function loadTokens(): SpotifyTokens | null {
+  if (cachedTokens !== undefined) return cachedTokens
   try {
     const raw = localStorage.getItem(TOKEN_KEY)
-    if (!raw) return null
+    if (!raw) { cachedTokens = null; return null }
     const t = JSON.parse(raw)
-    if (t?.access_token) return t
+    if (t?.access_token) { cachedTokens = t; return t }
   } catch { /* ignore */ }
-  return null
+  cachedTokens = null
+  return cachedTokens
 }
 
 function saveTokens(tokens: SpotifyTokens) {
+  cachedTokens = tokens
   localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens))
 }
 
@@ -120,7 +125,15 @@ export function hasSpotifyAuth(): boolean {
   return !!loadTokens()?.refresh_token
 }
 
+/** In-app playback needs the streaming scope, granted by reconnecting after this version. */
+export function hasSpotifyPlayback(): boolean {
+  const tokens = loadTokens()
+  if (!tokens?.refresh_token) return false
+  return (tokens.scope || '').split(' ').includes('streaming')
+}
+
 export function disconnectSpotify() {
+  cachedTokens = null
   localStorage.removeItem(TOKEN_KEY)
 }
 
@@ -133,27 +146,46 @@ async function tokenRequest(body: Record<string, string>) {
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok || data?.error) throw new Error(data?.error_description || data?.error || 'Spotify token request failed')
-  return data as { access_token: string; refresh_token?: string; expires_in: number }
+  return data as { access_token: string; refresh_token?: string; expires_in: number; scope?: string }
+}
+
+async function resolveAuthorizeUrl(clientId: string, state: string, challenge: string): Promise<string> {
+  const redirect = redirectUri()
+  if (hasBackend) {
+    try {
+      const query = new URLSearchParams({ state, challenge, redirect_uri: redirect })
+      const res = await fetch(apiUrl(`/api/spotify/login?${query.toString()}`), { cache: 'no-store' })
+      if (res.ok) {
+        const data = await res.json().catch(() => null) as { url?: string } | null
+        if (data?.url) return data.url
+      }
+    } catch { /* build the URL in the browser below */ }
+  }
+  if (!clientId) {
+    throw new Error(hasBackend
+      ? 'Spotify is not configured on the server. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.'
+      : 'Add your Spotify Client ID first.')
+  }
+  const params = new URLSearchParams({
+    client_id: clientId,
+    response_type: 'code',
+    redirect_uri: redirect,
+    code_challenge_method: 'S256',
+    code_challenge: challenge,
+    state,
+    scope: SCOPE,
+  })
+  return `https://accounts.spotify.com/authorize?${params.toString()}`
 }
 
 export async function beginSpotifyLogin() {
-  const clientId = await resolveSpotifyClientId()
-  if (!clientId) throw new Error('Add your Spotify Client ID first.')
   const verifier = randomString(64)
   const state = randomString(16)
   const challengeBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
   sessionStorage.setItem(VERIFIER_KEY, verifier)
   sessionStorage.setItem(STATE_KEY, state)
-  const params = new URLSearchParams({
-    client_id: clientId,
-    response_type: 'code',
-    redirect_uri: redirectUri(),
-    code_challenge_method: 'S256',
-    code_challenge: b64url(new Uint8Array(challengeBytes)),
-    state,
-    scope: SCOPE,
-  })
-  window.location.assign(`https://accounts.spotify.com/authorize?${params.toString()}`)
+  const clientId = await resolveSpotifyClientId()
+  window.location.assign(await resolveAuthorizeUrl(clientId, state, b64url(new Uint8Array(challengeBytes))))
 }
 
 export async function completeSpotifyLogin(): Promise<boolean> {
@@ -185,6 +217,7 @@ export async function completeSpotifyLogin(): Promise<boolean> {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       expires_at: Date.now() + tokens.expires_in * 1000,
+      scope: tokens.scope,
     })
     return true
   } finally {
@@ -207,6 +240,7 @@ async function getAccessToken(): Promise<string | null> {
       access_token: fresh.access_token,
       refresh_token: fresh.refresh_token || tokens.refresh_token,
       expires_at: Date.now() + fresh.expires_in * 1000,
+      scope: fresh.scope || tokens.scope,
     }
     saveTokens(next)
     return next.access_token
@@ -229,6 +263,51 @@ async function api<T>(path: string): Promise<T> {
   }
   if (!res.ok) throw new Error((data as any)?.error?.message || 'Spotify request failed')
   return data as T
+}
+
+export async function getSpotifyAccessToken(): Promise<string | null> {
+  return getAccessToken()
+}
+
+/** Authenticated request against the Spotify Web API that exposes the raw response (204s included). */
+export async function spotifyFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await getAccessToken()
+  if (!token) throw new Error('Connect Spotify to play music.')
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+  if (init.body) headers['Content-Type'] = 'application/json'
+  const res = await fetch(`https://api.spotify.com/v1${path}`, {
+    ...init,
+    headers: { ...headers, ...(init.headers as Record<string, string> | undefined) },
+  })
+  if (res.status === 401) {
+    disconnectSpotify()
+    throw new Error('Spotify session expired. Connect again.')
+  }
+  if (!res.ok) {
+    let message = ''
+    try {
+      const data = await res.json()
+      message = (data as any)?.error?.message || ''
+    } catch { /* ignore */ }
+    throw new Error(message || `Spotify request failed (${res.status})`)
+  }
+  return res
+}
+
+/** Find the Spotify URI for a searched song so it can be played through the user's account. */
+export async function findSpotifyTrack(title: string, artist: string): Promise<string | null> {
+  const query = [title, artist].filter((part) => part.trim()).join(' ').trim()
+  if (!query) return null
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 6000)
+  try {
+    const res = await spotifyFetch(`/search?q=${encodeURIComponent(query)}&type=track&limit=1`, { signal: controller.signal })
+    const data = await res.json().catch(() => null) as { tracks?: { items?: { uri?: string }[] } } | null
+    const uri = data?.tracks?.items?.[0]?.uri
+    return typeof uri === 'string' && uri.startsWith('spotify:track:') ? uri : null
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export const getSpotifyMe = () => api<SpotifyProfile>('/me')

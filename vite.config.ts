@@ -1,10 +1,11 @@
+import path from 'node:path'
 import react from '@vitejs/plugin-react'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import { AudioFindError, findAudioSource } from './shared/audio-find.mjs'
 import { IdentifyError, identifySong } from './shared/identify.mjs'
 import { getLyrics, LyricsError, searchLyrics } from './shared/lyrics.mjs'
 import { MusicSearchError, searchMusic } from './shared/music-search.mjs'
-import { exchangeSpotifyToken, spotifyPublicConfig } from './shared/spotify-token.mjs'
+import { exchangeSpotifyToken, spotifyAuthorizeUrl, spotifyPublicConfig } from './shared/spotify-token.mjs'
 
 function readJson(req: any): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -20,7 +21,7 @@ const sendError = (res: any, error: any, fallback: string) => {
   send(res, status, { error: error?.message || fallback })
 }
 
-function apiPlugin(): Plugin {
+function apiPlugin(spotify: { clientId: string; clientSecret: string }): Plugin {
   return {
     name: 'lyricflow-api',
     configureServer(server) {
@@ -30,16 +31,28 @@ function apiPlugin(): Plugin {
           if (url.startsWith('/api/spotify/config')) {
             if (req.method !== 'GET') { send(res, 405, { error: 'Method Not Allowed' }); return }
             send(res, 200, spotifyPublicConfig({
-              clientId: process.env.SPOTIFY_CLIENT_ID,
-              clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+              clientId: spotify.clientId,
+              clientSecret: spotify.clientSecret,
             })); return
+          }
+          if (url.startsWith('/api/spotify/login')) {
+            if (req.method !== 'GET') { send(res, 405, { error: 'Method Not Allowed' }); return }
+            const sp = new URL(url, 'http://x').searchParams
+            const authorizeUrl = spotifyAuthorizeUrl({
+              clientId: spotify.clientId,
+              redirectUri: sp.get('redirect_uri') || '',
+              state: sp.get('state') || '',
+              codeChallenge: sp.get('challenge') || '',
+            })
+            if (!authorizeUrl) { send(res, 503, { error: 'Spotify is not configured on the server' }); return }
+            send(res, 200, { url: authorizeUrl }); return
           }
           if (url.startsWith('/api/spotify/token')) {
             if (req.method !== 'POST') { send(res, 405, { error: 'Method Not Allowed' }); return }
             const body = await readJson(req)
             const result = await exchangeSpotifyToken(body, {
-              clientId: process.env.SPOTIFY_CLIENT_ID,
-              clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+              clientId: spotify.clientId,
+              clientSecret: spotify.clientSecret,
             })
             send(res, result.statusCode, result.body); return
           }
@@ -84,7 +97,7 @@ function apiPlugin(): Plugin {
             const q = (new URL(url, 'http://x').searchParams.get('q') || '').trim()
             if (!q) { send(res, 400, { error: 'Missing query' }); return }
             try {
-              const source = await findAudioSource(q, { youtubeApiKey: process.env.YOUTUBE_API_KEY })
+              const source = await findAudioSource(q)
               send(res, 200, source); return
             } catch (e: any) {
               const status = e instanceof AudioFindError ? e.statusCode : 502
@@ -111,14 +124,26 @@ function apiPlugin(): Plugin {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  root: 'src',
-  publicDir: '../public',
-  base: process.env.GITHUB_ACTIONS ? '/LyricFlow/' : '/',
-  build: {
-    outDir: '../dist',
-    emptyOutDir: true,
-  },
-  plugins: [react(), apiPlugin()],
+export default defineConfig(({ mode }) => {
+  const rootEnv = loadEnv(mode, process.cwd(), '')
+  const backendEnv = loadEnv(mode, path.resolve(process.cwd(), 'backend'), '')
+  const envValue = (name: string) => process.env[name] || rootEnv[name] || backendEnv[name] || ''
+
+  return {
+    root: 'src',
+    publicDir: '../public',
+    base: process.env.GITHUB_ACTIONS ? '/LyricFlow/' : '/',
+    build: {
+      outDir: '../dist',
+      emptyOutDir: true,
+    },
+    plugins: [
+      react(),
+      apiPlugin({
+        clientId: envValue('SPOTIFY_CLIENT_ID'),
+        clientSecret: envValue('SPOTIFY_CLIENT_SECRET'),
+      }),
+    ],
+  }
 })
 

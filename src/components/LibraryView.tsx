@@ -7,15 +7,18 @@ import {
   disconnectSpotify,
   getSpotifyClientId,
   getSpotifyMe,
+  getSpotifyServerConfig,
   getSpotifyPlaylistTracks,
   getSpotifyPlaylists,
   hasSpotifyAuth,
+  hasSpotifyPlayback,
   setSpotifyClientId,
   spotifyRedirectTarget,
   type SpotifyPlaylist,
   type SpotifyProfile,
   type SpotifyTrack,
 } from '../lib/spotify'
+import { resetSpotifyPlayer } from '../lib/spotifyPlayer'
 
 type Props = {
   playlists: Playlist[]
@@ -143,6 +146,7 @@ type SpotifyPaneProps = {
 
 function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: SpotifyPaneProps) {
   const [clientId, setClientId] = useState(() => getSpotifyClientId())
+  const [serverConfigured, setServerConfigured] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [profile, setProfile] = useState<SpotifyProfile | null>(null)
@@ -173,11 +177,19 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
 
   const loading = ready && !profile && !localError
 
+  useEffect(() => {
+    let cancelled = false
+    getSpotifyServerConfig()
+      .then((config) => { if (!cancelled) setServerConfigured(!!config?.configured) })
+      .catch(() => { /* ignore */ })
+    return () => { cancelled = true }
+  }, [])
+
   const connect = async () => {
     setLocalError(null)
     setConnecting(true)
     try {
-      setSpotifyClientId(clientId)
+      if (!serverConfigured) setSpotifyClientId(clientId)
       await beginSpotifyLogin()
     } catch (e: any) {
       setLocalError(e?.message || 'Could not start Spotify login.')
@@ -231,24 +243,32 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
       <div className="spotify-setup">
         <h3>Connect Spotify</h3>
         <p className="muted">
-          Create an app in the Spotify developer dashboard, add the redirect URI below, then paste the app&apos;s Client ID.
-          No secret is needed.
+          {serverConfigured
+            ? 'Sign in with Spotify to load your playlists and play music through the in-app player. Playback needs Spotify Premium.'
+            : 'Create an app in the Spotify developer dashboard, add the redirect URI below, then paste its Client ID. No secret is needed.'}
         </p>
         <div className="redirect-box">
           <span className="muted small">Redirect URI</span>
           <code>{spotifyRedirectTarget()}</code>
         </div>
-        <div className="create-row">
-          <input
-            className="search"
-            placeholder="Spotify Client ID"
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-          />
-          <button className="btn primary" onClick={() => void connect()} disabled={connecting || !clientId.trim()}>
-            {connecting ? 'Connecting…' : 'Connect Spotify'}
+        {serverConfigured ? (
+          <button className="btn primary spotify-connect" onClick={() => void connect()} disabled={connecting}>
+            <span className="spotify-dot" aria-hidden="true" />
+            {connecting ? 'Opening Spotify…' : 'Connect Spotify'}
           </button>
-        </div>
+        ) : (
+          <div className="create-row">
+            <input
+              className="search"
+              placeholder="Spotify Client ID"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            />
+            <button className="btn primary" onClick={() => void connect()} disabled={connecting || !clientId.trim()}>
+              {connecting ? 'Connecting…' : 'Connect Spotify'}
+            </button>
+          </div>
+        )}
         <a className="link" href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">Open Spotify dashboard</a>
         {(localError || error) && <div className="notice error">{localError || error}</div>}
       </div>
@@ -262,19 +282,34 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
           {profile?.images?.[0]?.url ? <img src={profile.images[0].url} alt="" /> : <div className="avatar-blank" />}
           <div>
             <div className="row-title">{profile?.display_name || 'Spotify connected'}</div>
-            <div className="muted small">{profile?.product === 'premium' ? 'Premium' : 'Spotify'} · playlists</div>
+            <div className="muted small">
+              {profile?.product === 'premium' ? 'Premium' : 'Spotify'} · {hasSpotifyPlayback() ? 'in-app playback' : 'playlists only'}
+            </div>
           </div>
         </div>
-        <button
-          className="btn small ghost"
-          onClick={() => { disconnectSpotify(); setProfile(null); setPlaylists([]); setTracks([]); setOpenId(null); onReadyChange(false) }}
-        >
-          Disconnect
-        </button>
+        <div className="row">
+          {!hasSpotifyPlayback() && (
+            <button className="btn small" onClick={() => void beginSpotifyLogin().catch((e: any) => setLocalError(e?.message || 'Reconnect failed.'))}>
+              Reconnect for playback
+            </button>
+          )}
+          <button
+            className="btn small ghost"
+            onClick={() => { resetSpotifyPlayer(); disconnectSpotify(); setProfile(null); setPlaylists([]); setTracks([]); setOpenId(null); onReadyChange(false) }}
+          >
+            Disconnect
+          </button>
+        </div>
       </div>
 
       {(localError || error) && (
         <div className="notice error" onClick={onDismissError}>{localError || error}</div>
+      )}
+
+      {!hasSpotifyPlayback() && (
+        <div className="notice">
+          In-app playback needs Spotify Premium plus the streaming permission. Until you reconnect, songs play through YouTube instead.
+        </div>
       )}
 
       {loading ? (

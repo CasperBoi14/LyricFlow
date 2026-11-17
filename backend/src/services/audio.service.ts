@@ -1,8 +1,6 @@
-import { config } from '../config/env.js'
 import { BadRequestError, HttpError, NotFoundError, UpstreamError } from '../lib/errors.js'
 import { fetchWithTimeout } from '../lib/fetch.js'
 
-const YOUTUBE_DATA_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search'
 const YOUTUBE_WEB_SEARCH_URL = 'https://www.youtube.com/youtubei/v1/search?prettyPrint=false'
 const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search'
 
@@ -15,19 +13,6 @@ const YOUTUBE_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 
 export type AudioSource = { youtubeId: string; cover: string } | { audioUrl: string; cover?: string }
-
-type YouTubeSearchResponse = {
-  items?: Array<{
-    id?: { videoId?: string }
-    snippet?: {
-      thumbnails?: {
-        high?: { url?: string }
-        medium?: { url?: string }
-        default?: { url?: string }
-      }
-    }
-  }>
-}
 
 type ITunesSearchResponse = {
   results?: Array<{
@@ -76,39 +61,6 @@ function findVideoId(node: unknown): string | null {
     if (videoId) return videoId
   }
   return null
-}
-
-async function searchYouTubeDataApi(query: string): Promise<AudioSource | null> {
-  const url = new URL(YOUTUBE_DATA_SEARCH_URL)
-  url.searchParams.set('part', 'snippet')
-  url.searchParams.set('type', 'video')
-  url.searchParams.set('maxResults', '1')
-  url.searchParams.set('q', query)
-  url.searchParams.set('order', 'relevance')
-  url.searchParams.set('videoEmbeddable', 'true')
-  url.searchParams.set('videoSyndicated', 'true')
-  url.searchParams.set('safeSearch', 'none')
-  url.searchParams.set(
-    'fields',
-    'items(id/videoId,snippet/thumbnails/high/url,snippet/thumbnails/medium/url,snippet/thumbnails/default/url)',
-  )
-  url.searchParams.set('key', config.youtubeApiKey)
-
-  const data = await fetchJson<YouTubeSearchResponse>(url, {}, YOUTUBE_TIMEOUT_MS)
-  const video = data.items?.[0]
-  if (!video) return null
-
-  const youtubeId = video.id?.videoId
-  if (typeof youtubeId !== 'string' || !VIDEO_ID_PATTERN.test(youtubeId)) return null
-
-  const thumbnails = video.snippet?.thumbnails
-  const cover =
-    thumbnails?.high?.url ??
-    thumbnails?.medium?.url ??
-    thumbnails?.default?.url ??
-    youtubeCover(youtubeId)
-
-  return { youtubeId, cover }
 }
 
 async function searchYouTubeWeb(query: string): Promise<AudioSource | null> {
@@ -170,31 +122,20 @@ export async function findAudioSource(query: string): Promise<AudioSource> {
   const searchQuery = query.trim()
   if (!searchQuery) throw new BadRequestError('Missing query')
 
-  const failures: HttpError[] = []
-  const searches: Array<() => Promise<AudioSource | null>> = []
-
-  if (config.youtubeApiKey) searches.push(() => searchYouTubeDataApi(searchQuery))
-  searches.push(() => searchYouTubeWeb(searchQuery))
-
-  for (const search of searches) {
-    try {
-      const source = await search()
-      if (source) return source
-    } catch (error) {
-      failures.push(error instanceof HttpError ? error : new UpstreamError('Audio source lookup failed'))
-    }
+  let youtubeFailure: HttpError | null = null
+  try {
+    const source = await searchYouTubeWeb(searchQuery)
+    if (source) return source
+  } catch (error) {
+    youtubeFailure = error instanceof HttpError ? error : new UpstreamError('Audio source lookup failed')
   }
 
   try {
     return await findPreview(searchQuery)
   } catch (error) {
-    const failure =
+    const previewFailure =
       error instanceof HttpError ? error : new UpstreamError('Audio source lookup failed')
-    if (failure.statusCode === 404) {
-      const upstreamFailure = failures.find((item) => item.statusCode === 504) ?? failures[0]
-      throw upstreamFailure ?? failure
-    }
-    failures.push(failure)
-    throw failures.find((item) => item.statusCode === 504) ?? failure
+    if (previewFailure.statusCode === 404) throw youtubeFailure ?? previewFailure
+    throw previewFailure
   }
 }

@@ -3,7 +3,6 @@ export type AudioSource =
   | { audioUrl: string; cover?: string }
 
 export type FindAudioOptions = {
-  youtubeApiKey?: string
   timeoutMs?: number
 }
 

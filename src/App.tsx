@@ -8,14 +8,14 @@ import { AddToPlaylist } from './components/AddToPlaylist'
 import { FullscreenLyrics } from './components/FullscreenLyrics'
 import { ProviderSetup } from './components/ProviderSetup'
 import { tracks as demoTracks } from './data/tracks'
-import type { AppView, Track } from './types'
+import type { AdState, AppView, Track } from './types'
 import { formatTime } from './lib/lyrics'
 import { findAudioSource, isPreviewAudioUrl } from './lib/audio'
 import { hasBackend } from './lib/api'
-import { getYouTubeApiKey } from './lib/keys'
 import { useAudioEngine } from './lib/useAudioEngine'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
-import { completeSpotifyLogin, hasSpotifyAuth } from './lib/spotify'
+import { beginSpotifyLogin, completeSpotifyLogin, findSpotifyTrack, hasSpotifyAuth, hasSpotifyPlayback } from './lib/spotify'
+import { canUseSpotifyPlayback, isSpotifyUriBlocked } from './lib/spotifyPlayer'
 import {
   createPlaylist,
   loadPlaylists,
@@ -80,6 +80,19 @@ function LibraryIcon() {
   )
 }
 
+function AdBar({ ad }: { ad: AdState }) {
+  const progress = ad.total > 0 ? Math.max(0, Math.min(1, 1 - ad.remaining / ad.total)) : 0
+  return (
+    <div className="ad-bar" role="status" aria-live="polite">
+      <span className="ad-tag">AD</span>
+      <div className={`ad-track${ad.total > 0 ? '' : ' indeterminate'}`}>
+        <i style={{ width: `${progress * 100}%` }} />
+      </div>
+      <span className="ad-time">{ad.total > 0 ? `${Math.ceil(Math.max(0, ad.remaining))}s left` : 'waiting for song'}</span>
+    </div>
+  )
+}
+
 export default function App() {
   const [view, setView] = useState<AppView>('search')
   const [catalog, setCatalog] = useState<Track[]>(() => {
@@ -97,19 +110,38 @@ export default function App() {
   const [playlists, setPlaylists] = useState<Playlist[]>(loadPlaylists)
   const [spotifyReady, setSpotifyReady] = useState(hasSpotifyAuth)
   const [spotifyError, setSpotifyError] = useState<string | null>(null)
+  const [ad, setAd] = useState<AdState | null>(null)
+  const [playbackNotice, setPlaybackNotice] = useState<string | null>(null)
+  const [pendingSpotify, setPendingSpotify] = useState<string | null>(null)
+  const [connectingSpotify, setConnectingSpotify] = useState(false)
   const live = useLiveIdentify()
 
   const selected = useMemo<Track | null>(() => catalog.find((t) => t.id === selectedId) ?? null, [catalog, selectedId])
+  const pendingRef = useRef<{ startAt: number; play: boolean } | null>(null)
+  const catalogRef = useRef(catalog)
+  const spotifyTriedRef = useRef<Set<string>>(new Set())
+  const resolvingRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => { catalogRef.current = catalog }, [catalog])
+
   const { seek } = useAudioEngine({
     track: selected,
     playing,
+    holdPlayback: !!pendingSpotify && pendingSpotify === selectedId && !selected?.spotifyUri,
     onTime: setTime,
     onPlayingChange: setPlaying,
     onDuration: setAudioDuration,
     onEnded: () => setPlaying(false),
     onError: setAudioError,
+    onAd: setAd,
+    onFallback: (message, track) => {
+      setPlaybackNotice(message)
+      if (!track?.spotifyUri) return
+      const uri = track.spotifyUri
+      spotifyTriedRef.current.add(track.id)
+      setCatalog((c) => c.map((t) => (t.spotifyUri === uri ? { ...t, spotifyUri: undefined } : t)))
+    },
   })
-  const pendingRef = useRef<{ startAt: number; play: boolean } | null>(null)
 
   useEffect(() => {
     const pend = pendingRef.current
@@ -118,6 +150,8 @@ export default function App() {
     setPlaying(pend?.play ?? false)
     setAudioDuration(0)
     setAudioError(null)
+    setAd(null)
+    setPlaybackNotice(null)
   }, [selectedId])
 
   useEffect(() => { savePlaylists(playlists) }, [playlists])
@@ -141,42 +175,81 @@ export default function App() {
       })
   }, [])
 
-  const resolvingRef = useRef<Set<string>>(new Set())
   const selectedYoutubeId = selected?.youtubeId
   const selectedAudioUrl = selected?.audioUrl
-  const selectedSource = selected?.source
-  const selectedTitle = selected?.title
-  const selectedArtist = selected?.artist
+  const selectedSpotifyUri = selected?.spotifyUri
 
   useEffect(() => {
-    if (!selectedId || !selectedSource) return
-    if (selectedYoutubeId || selectedAudioUrl) return
-    if (selectedSource === 'demo') return
+    const track = catalogRef.current.find((t) => t.id === selectedId)
+    if (!track || track.source === 'demo') return
+
+    if (track.spotifyUri) {
+      if (canUseSpotifyPlayback() && !isSpotifyUriBlocked(track.spotifyUri)) return
+      // Spotify cannot use this URI any more — drop it so YouTube can take over.
+      setCatalog((c) => c.map((t) => (t.id === track.id ? { ...t, spotifyUri: undefined } : t)))
+      return
+    }
+
+    const wantSpotify = canUseSpotifyPlayback() && !spotifyTriedRef.current.has(track.id)
+    if (!wantSpotify && (track.youtubeId || track.audioUrl)) return
+
     const resolving = resolvingRef.current
-    if (resolving.has(selectedId)) return
-    resolving.add(selectedId)
+    if (resolving.has(track.id)) return
+    resolving.add(track.id)
     let cancelled = false
-    findAudioSource(selectedTitle || '', selectedArtist || '')
-      .then((src) => {
+
+    ;(async () => {
+      try {
+        if (wantSpotify) {
+          spotifyTriedRef.current.add(track.id)
+          const uri = await findSpotifyTrack(track.title, track.artist).catch(() => null)
+          if (cancelled) return
+          if (uri && canUseSpotifyPlayback() && !isSpotifyUriBlocked(uri)) {
+            setCatalog((c) => c.map((t) => (t.id === track.id ? { ...t, spotifyUri: uri } : t)))
+            return
+          }
+        }
+
+        const current = catalogRef.current.find((t) => t.id === track.id) ?? track
+        if (current.youtubeId || current.audioUrl) return
+        const src = await findAudioSource(current.title, current.artist)
         if (cancelled) return
         if (!src.youtubeId && !src.audioUrl) {
           setAudioError('No audio source found for this track.')
           setPlaying(false)
           return
         }
-        setCatalog((c) => c.map((t) => t.id === selectedId ? {
+        setCatalog((c) => c.map((t) => t.id === track.id ? {
           ...t,
           youtubeId: t.youtubeId ?? src.youtubeId,
           audioUrl: t.audioUrl ?? src.audioUrl,
           cover: t.cover || src.cover || '',
         } : t))
-      })
-      .catch(() => { if (!cancelled) { setAudioError('Could not find audio for this track.'); setPlaying(false) } })
-      .finally(() => { resolving.delete(selectedId) })
-    return () => { cancelled = true; resolving.delete(selectedId) }
-  }, [selectedId, selectedYoutubeId, selectedAudioUrl, selectedSource, selectedTitle, selectedArtist, providerVersion])
+      } catch {
+        if (!cancelled) { setAudioError('Could not find audio for this track.'); setPlaying(false) }
+      } finally {
+        resolving.delete(track.id)
+        if (!cancelled) setPendingSpotify((p) => (p === track.id ? null : p))
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      resolving.delete(track.id)
+      setPendingSpotify((p) => (p === track.id ? null : p))
+    }
+  }, [selectedId, selectedSpotifyUri, selectedYoutubeId, selectedAudioUrl, providerVersion, spotifyReady])
+
+  const prepareTrack = (t: Track) => {
+    if (t.source !== 'demo' && !t.spotifyUri && canUseSpotifyPlayback() && !spotifyTriedRef.current.has(t.id)) {
+      setPendingSpotify(t.id)
+    } else {
+      setPendingSpotify(null)
+    }
+  }
 
   const openTrack = (t: Track, startAt = 0) => {
+    prepareTrack(t)
     setCatalog((c) => c.some((x) => x.id === t.id) ? c.map((x) => x.id === t.id ? t : x) : [t, ...c])
     pendingRef.current = { startAt, play: true }
     setSelectedId(t.id)
@@ -186,13 +259,17 @@ export default function App() {
   const currentIndex = catalog.findIndex((t) => t.id === selectedId)
   const next = () => {
     if (!catalog.length) return
+    const target = catalog[(currentIndex + 1 + catalog.length) % catalog.length]
+    prepareTrack(target)
     pendingRef.current = { startAt: 0, play: playing }
-    setSelectedId(catalog[(currentIndex + 1 + catalog.length) % catalog.length].id)
+    setSelectedId(target.id)
   }
   const prev = () => {
     if (!catalog.length) return
+    const target = catalog[(currentIndex - 1 + catalog.length) % catalog.length]
+    prepareTrack(target)
     pendingRef.current = { startAt: 0, play: playing }
-    setSelectedId(catalog[(currentIndex - 1 + catalog.length) % catalog.length].id)
+    setSelectedId(target.id)
   }
 
   const onProvidersSaved = () => {
@@ -205,6 +282,18 @@ export default function App() {
     const next = Math.max(-DELAY_LIMIT, Math.min(DELAY_LIMIT, Math.round(ms)))
     setDelayMs(next)
     localStorage.setItem(DELAY_KEY, String(next))
+  }
+
+  const connectSpotify = async () => {
+    setSpotifyError(null)
+    setConnectingSpotify(true)
+    try {
+      await beginSpotifyLogin()
+    } catch (e: any) {
+      setSpotifyError(e?.message || 'Could not connect to Spotify.')
+      setConnectingSpotify(false)
+      setView('library')
+    }
   }
 
   const onCreatePlaylist = (name: string) => {
@@ -261,6 +350,18 @@ export default function App() {
               <h1>{meta.title}</h1>
               {meta.subtitle && <div className="muted small">{meta.subtitle}</div>}
             </div>
+            {!spotifyReady ? (
+              <button className="btn spotify-btn" onClick={() => void connectSpotify()} disabled={connectingSpotify}>
+                <span className="spotify-dot" aria-hidden="true" />
+                {connectingSpotify ? 'Opening Spotify…' : 'Connect Spotify'}
+              </button>
+            ) : !hasSpotifyPlayback() ? (
+              <button className="btn spotify-btn" onClick={() => void connectSpotify()} disabled={connectingSpotify}>
+                {connectingSpotify ? 'Opening Spotify…' : 'Reconnect Spotify for playback'}
+              </button>
+            ) : (
+              <span className="spotify-chip"><span className="spotify-dot" aria-hidden="true" />Spotify connected</span>
+            )}
           </div>
           <div className="main-body">
             {view === 'identify' ? (
@@ -288,14 +389,13 @@ export default function App() {
 
         <aside className="panel rightbar">
           {audioError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{audioError}</div>}
+          {playbackNotice && <div className="notice" style={{ margin: '4px 10px 0' }}>{playbackNotice}</div>}
           {selected?.source === 'demo' && (
             <div className="notice" style={{ margin: '4px 10px 0' }}>Demo track · simulated playback. Search a real song for full audio.</div>
           )}
-          {!hasBackend && selected && selected.source !== 'demo' && !selected.youtubeId && (
+          {!hasBackend && selected && selected.source !== 'demo' && !selected.youtubeId && !selected.spotifyUri && (
             <div className="notice" style={{ margin: '4px 10px 0' }}>
-              {getYouTubeApiKey()
-                ? 'No full-length source found for this track — playing the 30-second preview.'
-                : 'Playing a 30-second preview. Add a free YouTube API key below to play full songs.'}
+              Playing a 30-second preview. Connect Spotify (Premium) to play full songs.
             </div>
           )}
           {!hasBackend && <ProviderSetup onSaved={onProvidersSaved} />}
@@ -323,12 +423,13 @@ export default function App() {
         <div className="transport">
           <div className="controls">
             <button className="icon-btn" onClick={prev} title="Previous">⏮</button>
-            <button className="icon-btn play" onClick={() => selected && setPlaying((p) => !p)} disabled={!selected} title="Play/Pause">{playing ? '❚❚' : '▶'}</button>
+            <button className="icon-btn play" onClick={() => selected && setPlaying((p) => !p)} disabled={!selected || !!ad} title={ad ? 'Waiting for the ad to finish' : 'Play/Pause'}>{playing ? '❚❚' : '▶'}</button>
             <button className="icon-btn" onClick={next} title="Next">⏭</button>
           </div>
+          {ad && <AdBar ad={ad} />}
           <div className="progress">
             <span>{formatTime(time)}</span>
-            <input className="range" type="range" min={0} max={playbackDuration || 300} step={0.05} value={Math.min(time, playbackDuration || 300)} onChange={(e) => seek(Number(e.target.value))} />
+            <input className="range" type="range" min={0} max={playbackDuration || 300} step={0.05} value={Math.min(time, playbackDuration || 300)} onChange={(e) => seek(Number(e.target.value))} disabled={!!ad} />
             <span>{formatTime(playbackDuration)}</span>
           </div>
         </div>
@@ -353,6 +454,7 @@ export default function App() {
           duration={playbackDuration}
           playing={playing}
           delayMs={delayMs}
+          ad={ad}
           onDelayChange={updateDelay}
           onClose={() => setFullscreen(false)}
           onTogglePlay={() => setPlaying((p) => !p)}

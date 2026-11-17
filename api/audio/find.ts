@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (q.length > MAX_QUERY_LENGTH) return respond(res, 400, { error: 'Query is too long' })
 
   try {
-    const source = await findAudioSource(q, { youtubeApiKey: process.env.YOUTUBE_API_KEY })
+    const source = await findAudioSource(q)
     return respond(res, 200, source)
   } catch (error) {
     if (error instanceof AudioFindError) {

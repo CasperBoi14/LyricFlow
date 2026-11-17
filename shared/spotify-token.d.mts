@@ -35,6 +35,17 @@ export type SpotifyPublicConfig = {
   serverTokenExchange: boolean
 }
 
+export type SpotifyAuthorizeOptions = {
+  clientId?: string
+  redirectUri?: string
+  state?: string
+  codeChallenge?: string
+}
+
+export declare const SPOTIFY_SCOPES: string
+
+export declare function spotifyAuthorizeUrl(options?: SpotifyAuthorizeOptions): string | null
+
 export declare function spotifyPublicConfig(options?: SpotifyTokenOptions): SpotifyPublicConfig
 
 export declare function exchangeSpotifyToken(

@@ -347,40 +347,24 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
 .line-progress { width: min(560px, 62vw); height: 2px; border-radius: 2px; background: rgba(255,255,255,.09); overflow: hidden; }
 .line-progress i { display: block; height: 100%; width: 100%; transform-origin: left; transition: transform .1s linear; background: linear-gradient(90deg, rgba(157,176,255,.85), rgba(90,217,180,.85)); }
 
-.word-stack { display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.4vh, 16px); width: 100%; max-width: 1200px; }
-.word { transition: opacity .3s ease; }
-.word.ghost {
-  font-size: clamp(18px, 2.5vw, 34px); font-weight: 500; color: rgba(255,255,255,.26);
-  letter-spacing: -0.01em; line-height: 1.15;
-  max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  transition: opacity .35s ease, transform .5s cubic-bezier(.22,.61,.36,1), color .35s;
+.stage-sentence {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center;
+  gap: clamp(6px, 1.1vw, 18px); width: 100%; max-width: 1200px;
+  min-height: clamp(60px, 12vh, 150px);
 }
-.word.ghost.prev { opacity: .62; animation: ghostUp .52s cubic-bezier(.22,.61,.36,1) both; }
-.word.ghost.next { opacity: .5; color: rgba(255,255,255,.32); animation: ghostDown .52s cubic-bezier(.22,.61,.36,1) both; }
-@keyframes ghostUp {
-  0% { opacity: .9; transform: translateY(24px) scale(.96); filter: blur(2px); }
-  100% { opacity: .62; transform: translateY(-10px) scale(.92); filter: blur(0); }
+.word-token {
+  font-weight: 720; letter-spacing: -0.04em; line-height: 1.04; color: rgba(255,255,255,.9);
+  text-shadow: 0 10px 46px rgba(0,0,0,.4);
+  animation: tokenIn .36s cubic-bezier(.19,.7,.22,1) both;
 }
-@keyframes ghostDown {
-  0% { opacity: 0; transform: translateY(34px) scale(.94); }
-  100% { opacity: .5; transform: translateY(10px) scale(.96); }
-}
-.word.current { display: flex; flex-direction: column; align-items: center; gap: clamp(10px, 1.6vh, 18px); animation: wordIn .5s cubic-bezier(.19,.7,.22,1); }
-.word-main {
-  font-size: clamp(48px, 9.4vw, 148px);
-  font-weight: 750;
-  letter-spacing: -0.045em;
-  line-height: .98;
+.word-token.current {
   color: #fff;
-  text-shadow: 0 10px 60px rgba(0,0,0,.45);
-  max-width: 96vw; overflow-wrap: anywhere;
+  text-shadow: 0 0 34px rgba(157,176,255,.5), 0 10px 46px rgba(0,0,0,.4);
 }
-.word-bar { width: clamp(96px, 14vw, 190px); height: 3px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; }
-.word-bar i { display: block; height: 100%; width: 100%; transform-origin: left; transition: transform .07s linear; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
-@keyframes wordIn {
-  0% { opacity: 0; transform: translateY(30px) scale(.94); filter: blur(8px); }
-  60% { filter: blur(0); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+.sentence-sung { font-size: clamp(30px, 4vw, 54px); color: rgba(255,255,255,.18); }
+@keyframes tokenIn {
+  0% { opacity: 0; transform: translateY(18px) scale(.9); filter: blur(6px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
 }
 
 .stage-footer { position: relative; z-index: 2; display: flex; align-items: center; gap: 18px; padding: 18px 42px 26px; }
@@ -404,7 +388,6 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
   .lyrics-scroll { max-height: 460px; padding-bottom: 20px; }
   .lib-split { grid-template-columns: 1fr; }
   .playlist-list { max-height: 30vh; }
-  .word-main { font-size: clamp(42px, 12vw, 96px); }
   .stage-footer { padding: 14px 22px 20px; }
 }
 @media (max-width: 640px) {
@@ -419,7 +402,47 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
   .add-menu { position: fixed; left: 12px; right: 12px; bottom: 12px; width: auto; }
   .create-row { flex-direction: column; align-items: stretch; }
 }
+/* ---------- Spotify connect ---------- */
+.spotify-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  border-color: rgba(30,215,96,.35); background: rgba(30,215,96,.12); color: #a7f3c6; font-weight: 600;
+}
+.spotify-btn:hover { background: rgba(30,215,96,.2); }
+.spotify-btn:disabled { opacity: .6; }
+.spotify-connect { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; }
+.spotify-dot { width: 7px; height: 7px; border-radius: 50%; background: #1ed760; box-shadow: 0 0 8px rgba(30,215,96,.8); flex: 0 0 auto; }
+.spotify-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 99px;
+  border: 1px solid rgba(30,215,96,.28); background: rgba(30,215,96,.08); color: #a7f3c6; font-size: 11.5px;
+}
+
+/* ---------- Ads ---------- */
+.ad-bar {
+  width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center;
+  padding: 4px 8px; border: 1px solid rgba(255,190,90,.28); border-radius: 8px;
+  background: rgba(255,190,90,.07); color: #ffd79a; font-size: 10.5px;
+}
+.ad-tag {
+  font-size: 9px; font-weight: 700; letter-spacing: .1em; padding: 1px 5px;
+  border-radius: 4px; background: #ffcf7a; color: #241802;
+}
+.ad-track { height: 3px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; }
+.ad-track i {
+  display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, #ffb347, #ffe0a3);
+  transition: width .2s linear;
+}
+.ad-track.indeterminate i { width: 100% !important; animation: adPulse 1.2s ease-in-out infinite; }
+@keyframes adPulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+.ad-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stage-ad {
+  position: relative; z-index: 2; width: min(560px, 76vw); margin: 0 auto 8px;
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+  padding: 8px 12px; border: 1px solid rgba(255,190,90,.28); border-radius: 10px;
+  background: rgba(255,190,90,.08); color: #ffd79a; font-size: 11.5px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .mic.listening, .word.current, .word.ghost.prev, .word.ghost.next { animation: none; }
-  .line-progress i, .word-bar i { transition: none; }
+  .mic.listening, .word-token { animation: none; }
+  .line-progress i { transition: none; }
 }

@@ -29,6 +29,36 @@ export function getSpotifyPublicConfig() {
   }
 }
 
+const SPOTIFY_SCOPES = [
+  'playlist-read-private',
+  'playlist-read-collaborative',
+  'user-read-private',
+  'user-read-email',
+  'user-read-playback-state',
+  'user-modify-playback-state',
+  'streaming',
+].join(' ')
+
+/** Build the authorize URL on the server so the browser never needs the client ID. */
+export function getSpotifyAuthorizeUrl(input: {
+  redirectUri: string
+  state: string
+  codeChallenge: string
+}): string | null {
+  const clientId = config.spotifyClientId
+  if (!clientId || !input.redirectUri || !input.state || !input.codeChallenge) return null
+
+  const url = new URL('https://accounts.spotify.com/authorize')
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('redirect_uri', input.redirectUri)
+  url.searchParams.set('code_challenge_method', 'S256')
+  url.searchParams.set('code_challenge', input.codeChallenge)
+  url.searchParams.set('state', input.state)
+  url.searchParams.set('scope', SPOTIFY_SCOPES)
+  return url.toString()
+}
+
 export async function exchangeSpotifyToken(body: Record<string, unknown>): Promise<SpotifyTokenResult> {
   const grantType = readString(body.grant_type)
   if (!grantType) return fail(400, 'invalid_request', 'grant_type is required')

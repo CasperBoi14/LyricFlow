@@ -8,7 +8,7 @@ import { AudioFindError, findAudioSource } from './shared/audio-find.mjs'
 import { IdentifyError, identifySong } from './shared/identify.mjs'
 import { getLyrics, LyricsError, searchLyrics } from './shared/lyrics.mjs'
 import { MusicSearchError, searchMusic } from './shared/music-search.mjs'
-import { exchangeSpotifyToken, spotifyPublicConfig } from './shared/spotify-token.mjs'
+import { exchangeSpotifyToken, spotifyAuthorizeUrl, spotifyPublicConfig } from './shared/spotify-token.mjs'
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url))
 const DIST = path.resolve(process.env.STATIC_DIR || path.join(ROOT, 'dist'))
@@ -116,7 +116,7 @@ async function handleApi(req, res, url) {
     const q = (url.searchParams.get('q') || '').trim()
     if (!q) return json(res, 400, { error: 'Missing query' }), true
     try {
-      const source = await findAudioSource(q, { youtubeApiKey: process.env.YOUTUBE_API_KEY })
+      const source = await findAudioSource(q)
       return json(res, 200, source), true
     } catch (error) {
       const status = error instanceof AudioFindError ? error.statusCode : 502
@@ -169,6 +169,18 @@ async function handleApi(req, res, url) {
       clientId: process.env.SPOTIFY_CLIENT_ID,
       clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
     })), true
+  }
+
+  if (url.pathname === '/api/spotify/login') {
+    if (req.method !== 'GET') return json(res, 405, { error: 'Method Not Allowed' }), true
+    const authorizeUrl = spotifyAuthorizeUrl({
+      clientId: process.env.SPOTIFY_CLIENT_ID,
+      redirectUri: url.searchParams.get('redirect_uri') || '',
+      state: url.searchParams.get('state') || '',
+      codeChallenge: url.searchParams.get('challenge') || '',
+    })
+    if (!authorizeUrl) return json(res, 503, { error: 'Spotify is not configured on the server' }), true
+    return json(res, 200, { url: authorizeUrl }), true
   }
 
   if (url.pathname === '/api/spotify/token') {

@@ -1,4 +1,3 @@
-const YOUTUBE_DATA_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search'
 const YOUTUBE_WEB_SEARCH_URL = 'https://www.youtube.com/youtubei/v1/search?prettyPrint=false'
 const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search'
 
@@ -73,34 +72,6 @@ function findVideoId(node) {
   return null
 }
 
-async function searchYouTubeDataApi(query, apiKey, timeoutMs) {
-  const url = new URL(YOUTUBE_DATA_SEARCH_URL)
-  url.searchParams.set('part', 'snippet')
-  url.searchParams.set('type', 'video')
-  url.searchParams.set('maxResults', '1')
-  url.searchParams.set('q', query)
-  url.searchParams.set('order', 'relevance')
-  url.searchParams.set('videoEmbeddable', 'true')
-  url.searchParams.set('videoSyndicated', 'true')
-  url.searchParams.set('safeSearch', 'none')
-  url.searchParams.set(
-    'fields',
-    'items(id/videoId,snippet/thumbnails/high/url,snippet/thumbnails/medium/url,snippet/thumbnails/default/url)',
-  )
-  url.searchParams.set('key', apiKey)
-
-  const data = await requestJson(url, {}, timeoutMs)
-  const video = data.items?.[0]
-  const videoId = video?.id?.videoId
-  if (typeof videoId !== 'string' || !VIDEO_ID_PATTERN.test(videoId)) return null
-
-  const thumbnails = video.snippet?.thumbnails
-  const cover =
-    thumbnails?.high?.url ?? thumbnails?.medium?.url ?? thumbnails?.default?.url ?? youtubeCover(videoId)
-
-  return { youtubeId: videoId, cover }
-}
-
 async function searchYouTubeWeb(query, timeoutMs) {
   const data = await requestJson(
     YOUTUBE_WEB_SEARCH_URL,
@@ -160,14 +131,9 @@ export async function findAudioSource(query, options = {}) {
 
   const timeoutMs =
     Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : YOUTUBE_TIMEOUT_MS
-  const apiKey = typeof options.youtubeApiKey === 'string' ? options.youtubeApiKey.trim() : ''
-
-  const youtubeSearches = []
-  if (apiKey) youtubeSearches.push(() => searchYouTubeDataApi(searchQuery, apiKey, timeoutMs))
-  youtubeSearches.push(() => searchYouTubeWeb(searchQuery, timeoutMs))
 
   const failures = []
-  for (const search of youtubeSearches) {
+  for (const search of [() => searchYouTubeWeb(searchQuery, timeoutMs)]) {
     try {
       const source = await search()
       if (source) return source

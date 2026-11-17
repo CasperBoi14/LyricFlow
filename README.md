@@ -4,24 +4,27 @@ LyricFlow is deployed automatically to GitHub Pages from `main`:
 
 `https://casperboi14.github.io/LyricFlow/`
 
-The GitHub Pages workflow builds the Vite app and publishes `dist`. The app is
-fully usable without a backend: it streams full-length audio through the YouTube
-player and recognizes songs from the microphone through AudD, both directly from
-the browser. Without provider keys it still works with 30-second iTunes previews
-and direct LRCLIB / iTunes requests.
+The GitHub Pages workflow builds the Vite app and publishes `dist`. Songs play
+through Spotify when an account is connected (Premium required), with the
+YouTube IFrame player as the fallback when Spotify cannot play a track.
+Microphone recognition uses AudD, and lyrics come from LRCLIB.
 
-## Browser providers (no backend)
+## Spotify setup
 
-Add either key in the app under **Audio providers**, or bake it into the build
-with a GitHub Actions repository variable (or `.env` locally):
+Spotify is connected from the app with **Connect Spotify**. The server owns the
+OAuth exchange, so the browser never sees the client secret:
 
-- `VITE_YOUTUBE_API_KEY` — free [YouTube Data API v3](https://console.cloud.google.com/apis/credentials)
-  key. Searches for an embeddable video and plays the full track in the YouTube
-  player. Without it, playback falls back to 30-second iTunes previews.
-- `VITE_AUDD_API_TOKEN` — free [AudD](https://dashboard.audd.io/) token. Sends
-  the 12-second microphone sample straight from the browser for recognition.
+- `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` — create an app at
+  [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
+  Add the app origin as a Redirect URI (for local dev, `http://localhost:5173/`).
+- The Fastify server reads `backend/.env`; Vercel functions read the project's
+  environment variables. The Vite dev server also reads `backend/.env`.
+- Playback uses the Web Playback SDK and requires Spotify Premium plus the
+  `streaming` scope, which **Connect Spotify** requests.
 
-Keys entered in the app are stored in `localStorage` on the user's device.
+`VITE_AUDD_API_TOKEN` can bake an AudD token into the build (or enter it under
+**Song recognition** in the app). Keys entered in the app are stored in
+`localStorage` on the user's device.
 
 To connect the full API backend instead, set
 `VITE_API_BASE_URL=https://your-backend.example.com` in the GitHub Actions
@@ -37,6 +40,8 @@ The frontend expects these JSON endpoints:
 - `GET /api/lyrics/search?q=...` -> LRCLIB search array
 - `GET /api/lyrics/get?artist_name=...&track_name=...` -> LRCLIB record
 - `POST /api/identify` with `{ "sample": "<base64 wav>" }` -> `{ "title", "artist", "album", "cover", "url" }`
+- `GET /api/spotify/config` -> `{ "configured", "clientId", "serverTokenExchange" }`
+- `GET /api/spotify/login?state=...&challenge=...&redirect_uri=...` -> `{ "url": "https://accounts.spotify.com/authorize?..." }`
 - `POST /api/spotify/token` with a JSON token request body -> Spotify token response
 
 Full songs are played with the YouTube IFrame player. If the backend returns a

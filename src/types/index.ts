@@ -29,6 +29,13 @@ export type Track = {
   instrumental?: boolean
 }
 
+export type AdState = {
+  /** Seconds left in the ad, 0 when the player will not reveal the ad length. */
+  remaining: number
+  /** Total ad length in seconds, 0 when unknown. */
+  total: number
+}
+
 export type AppView = 'library' | 'identify' | 'search'
 
 export type SearchResult = {
