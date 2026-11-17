@@ -386,6 +386,7 @@ export default function App() {
             )}
           </div>
           <div className="main-body">
+            <div className="view-enter" key={view}>
             {view === 'identify' ? (
               <IdentifyView live={live} currentTrack={selected} health={liveHealth} onOpen={openTrack} />
             ) : view === 'search' ? (
@@ -406,6 +407,7 @@ export default function App() {
                 onDismissSpotifyError={() => setSpotifyError(null)}
               />
             )}
+            </div>
           </div>
         </main>
 
