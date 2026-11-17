@@ -45,6 +45,11 @@ export function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+/** Positive offsets show each lyric and word later than the audio. */
+export function lyricTime(currentTime: number, delayMs: number): number {
+  return currentTime - delayMs / 1000
+}
+
 const VOWELS = /[aeiouy]+/g
 
 function syllables(raw: string): number {

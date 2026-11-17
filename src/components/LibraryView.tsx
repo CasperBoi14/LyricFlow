@@ -13,6 +13,7 @@ import {
   hasSpotifyAuth,
   hasSpotifyPlayback,
   setSpotifyClientId,
+  SpotifyApiError,
   spotifyRedirectTarget,
   type SpotifyPlaylist,
   type SpotifyProfile,
@@ -151,31 +152,42 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
   const [localError, setLocalError] = useState<string | null>(null)
   const [profile, setProfile] = useState<SpotifyProfile | null>(null)
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
+  const [loadingPlaylists, setLoadingPlaylists] = useState(ready)
+  const [nextPlaylistOffset, setNextPlaylistOffset] = useState<number | null>(null)
+  const [loadingMorePlaylists, setLoadingMorePlaylists] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
   const [tracks, setTracks] = useState<SpotifyTrack[]>([])
   const [loadingTracks, setLoadingTracks] = useState(false)
+  const [loadingMoreTracks, setLoadingMoreTracks] = useState(false)
+  const [nextTrackOffset, setNextTrackOffset] = useState<number | null>(null)
   const [openingTrack, setOpeningTrack] = useState<string | null>(null)
   const requestRef = useRef(0)
 
   useEffect(() => {
     if (!ready) return
     let cancelled = false
-    Promise.all([getSpotifyMe(), getSpotifyPlaylists()])
-      .then(([me, list]) => {
+    getSpotifyMe()
+      .then(async (me) => {
         if (cancelled) return
         setProfile(me)
+        const list = await getSpotifyPlaylists()
+        if (cancelled) return
         setPlaylists(list.items || [])
+        setNextPlaylistOffset(list.next ? (list.items || []).length : null)
         setLocalError(null)
       })
       .catch((e: any) => {
         if (cancelled) return
-        setLocalError(e?.message || 'Could not load Spotify.')
+        setLocalError(e instanceof SpotifyApiError && e.status === 403
+          ? 'Spotify denied access (403). In your Spotify Developer app, add this account under Users Management, use Premium, then reconnect to grant playlist access.'
+          : e?.message || 'Could not load Spotify.')
         if (!hasSpotifyAuth()) onReadyChange(false)
       })
+      .finally(() => { if (!cancelled) setLoadingPlaylists(false) })
     return () => { cancelled = true }
   }, [ready, onReadyChange])
 
-  const loading = ready && !profile && !localError
+  const loading = ready && loadingPlaylists && !localError
 
   useEffect(() => {
     let cancelled = false
@@ -202,15 +214,48 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
     setOpenId(playlist.id)
     setLoadingTracks(true)
     setTracks([])
+    setNextTrackOffset(null)
+    setLocalError(null)
     try {
       const data = await getSpotifyPlaylistTracks(playlist.id)
       if (request !== requestRef.current) return
-      setTracks((data.items || []).map((i) => i.track).filter((t): t is SpotifyTrack => !!t && !!t.name))
+      setTracks(data.tracks)
+      setNextTrackOffset(data.nextOffset)
     } catch (e: any) {
       if (request !== requestRef.current) return
-      setLocalError(e?.message || 'Could not load playlist tracks.')
+      setLocalError(e instanceof SpotifyApiError && e.status === 403
+        ? 'Spotify denied this playlist (403). Spotify currently allows in-app items from playlists you own or collaborate on. Open a followed playlist in Spotify instead.'
+        : e?.message || 'Could not load playlist tracks.')
     } finally {
       if (request === requestRef.current) setLoadingTracks(false)
+    }
+  }
+
+  const loadMorePlaylists = async () => {
+    if (nextPlaylistOffset === null || loadingMorePlaylists) return
+    setLoadingMorePlaylists(true)
+    try {
+      const page = await getSpotifyPlaylists(nextPlaylistOffset)
+      setPlaylists((current) => [...current, ...(page.items || [])])
+      setNextPlaylistOffset(page.next ? nextPlaylistOffset + (page.items || []).length : null)
+    } catch (e: any) {
+      setLocalError(e?.message || 'Could not load more playlists.')
+    } finally { setLoadingMorePlaylists(false) }
+  }
+
+  const loadMoreTracks = async () => {
+    if (!openId || nextTrackOffset === null || loadingMoreTracks) return
+    const request = requestRef.current
+    setLoadingMoreTracks(true)
+    try {
+      const data = await getSpotifyPlaylistTracks(openId, nextTrackOffset)
+      if (request !== requestRef.current) return
+      setTracks((current) => [...current, ...data.tracks])
+      setNextTrackOffset(data.nextOffset)
+    } catch (e: any) {
+      if (request === requestRef.current) setLocalError(e?.message || 'Could not load more tracks.')
+    } finally {
+      if (request === requestRef.current) setLoadingMoreTracks(false)
     }
   }
 
@@ -289,9 +334,9 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
           </div>
         </div>
         <div className="row">
-          {!hasSpotifyPlayback() && (
+          {(!hasSpotifyPlayback() || localError) && (
             <button className="btn small" onClick={() => void beginSpotifyLogin().catch((e: any) => setLocalError(e?.message || 'Reconnect failed.'))}>
-              Reconnect for playback
+              Reconnect Spotify
             </button>
           )}
           <button
@@ -316,16 +361,21 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
       {loading ? (
         <div className="empty">Loading your playlists…</div>
       ) : playlists.length === 0 ? (
-        <div className="empty">No Spotify playlists found for this account.</div>
+        <div className="empty">{localError ? 'Spotify playlists could not be loaded.' : 'No Spotify playlists found for this account.'}</div>
       ) : (
         <div className="lib-split">
           <div className="playlist-list">
             {playlists.map((p) => (
               <button key={p.id} className={`playlist-chip ${openId === p.id ? 'active' : ''}`} onClick={() => void openPlaylist(p)}>
                 <span className="playlist-name">{p.name}</span>
-                <span className="playlist-count">{p.tracks?.total ?? 0}</span>
+                <span className="playlist-count">{p.items?.total ?? p.tracks?.total ?? 0}</span>
               </button>
             ))}
+            {nextPlaylistOffset !== null && (
+              <button className="btn small" onClick={() => void loadMorePlaylists()} disabled={loadingMorePlaylists}>
+                {loadingMorePlaylists ? 'Loading…' : 'Load more playlists'}
+              </button>
+            )}
           </div>
 
           <div className="playlist-pane">
@@ -337,7 +387,12 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
               <>
                 <div className="playlist-head">
                   <h3>{playlists.find((p) => p.id === openId)?.name || 'Playlist'}</h3>
-                  <span className="muted small">{tracks.length} songs</span>
+                  <div className="row">
+                    <span className="muted small">{tracks.length} songs</span>
+                    {playlists.find((p) => p.id === openId)?.external_urls?.spotify && (
+                      <a className="link small" href={playlists.find((p) => p.id === openId)!.external_urls!.spotify} target="_blank" rel="noreferrer">Open in Spotify</a>
+                    )}
+                  </div>
                 </div>
                 <div className="track-list">
                   {tracks.map((t, i) => (
@@ -353,6 +408,11 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
                     </div>
                   ))}
                 </div>
+                {nextTrackOffset !== null && (
+                  <button className="btn small" onClick={() => void loadMoreTracks()} disabled={loadingMoreTracks}>
+                    {loadingMoreTracks ? 'Loading…' : 'Load more songs'}
+                  </button>
+                )}
               </>
             )}
           </div>

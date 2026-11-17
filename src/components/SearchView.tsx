@@ -3,7 +3,7 @@ import type { SearchResult, Track } from '../types'
 import { searchMusic } from '../lib/providers'
 import { resolveToTrack } from '../lib/lrclib'
 
-export function SearchView({ onOpen }: { onOpen: (t: Track) => void }) {
+export function SearchView({ onOpen, recentTracks }: { onOpen: (t: Track) => void; recentTracks: Track[] }) {
   const [q, setQ] = useState('')
   const [searching, setSearching] = useState(false)
   const [openingId, setOpeningId] = useState<string | null>(null)
@@ -67,6 +67,24 @@ export function SearchView({ onOpen }: { onOpen: (t: Track) => void }) {
             </div>
           ))}
         </div>
+      )}
+
+      {recentTracks.length > 0 && (
+        <section className="recent-section" aria-label="Recently played">
+          <h2 className="section-title">Recently played</h2>
+          <div className="track-list">
+            {recentTracks.map((track) => (
+              <div className="track-row" key={track.id}>
+                <div className="row-cover" style={{ background: track.cover?.startsWith('http') ? `url(${track.cover}) center/cover` : 'var(--panel-2)' }} />
+                <div className="row-meta">
+                  <div className="row-title">{track.title}</div>
+                  <div className="muted small">{track.artist}</div>
+                </div>
+                <button className="btn small" onClick={() => onOpen(track)}>Play</button>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   )

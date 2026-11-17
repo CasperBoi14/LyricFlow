@@ -7,9 +7,10 @@ type Props = {
   track: Track | null
   onAdd: (playlistId: string, trackId: string) => void
   onCreate: (name: string) => Playlist
+  placement?: 'up' | 'down'
 }
 
-export function AddToPlaylist({ playlists, track, onAdd, onCreate }: Props) {
+export function AddToPlaylist({ playlists, track, onAdd, onCreate, placement = 'up' }: Props) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [added, setAdded] = useState<string | null>(null)
@@ -74,7 +75,7 @@ export function AddToPlaylist({ playlists, track, onAdd, onCreate }: Props) {
       </button>
 
       {open && (
-        <div className="add-menu" role="menu" aria-label="Add to playlist">
+        <div className={`add-menu ${placement}`} role="menu" aria-label="Add to playlist">
           <div className="add-menu-head">
             Add <span>{track?.title}</span>
           </div>

@@ -15,8 +15,10 @@ export type SpotifyPlaylist = {
   name: string
   description?: string | null
   images?: { url: string }[]
-  tracks: { total: number }
-  owner?: { display_name?: string }
+  items?: { total: number }
+  tracks?: { total: number }
+  owner?: { id?: string; display_name?: string }
+  collaborative?: boolean
   uri?: string
   external_urls?: { spotify?: string }
 }
@@ -35,6 +37,12 @@ export type SpotifyTrack = {
   duration_ms: number
   external_urls?: { spotify?: string }
   uri?: string
+  type?: string
+}
+
+export class SpotifyApiError extends Error {
+  readonly status: number
+  constructor(message: string, status: number) { super(message); this.status = status }
 }
 
 const CLIENT_KEY = 'lf-spotify-client'
@@ -289,7 +297,7 @@ async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Re
 async function api<T>(path: string): Promise<T> {
   const res = await authorizedFetch(path)
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((data as any)?.error?.message || 'Spotify request failed')
+  if (!res.ok) throw new SpotifyApiError((data as any)?.error?.message || `Spotify request failed (${res.status})`, res.status)
   return data as T
 }
 
@@ -328,6 +336,15 @@ export async function findSpotifyTrack(title: string, artist: string): Promise<s
 }
 
 export const getSpotifyMe = () => api<SpotifyProfile>('/me')
-export const getSpotifyPlaylists = () => api<{ items: SpotifyPlaylist[] }>('/me/playlists?limit=50')
-export const getSpotifyPlaylistTracks = (id: string) =>
-  api<{ items: { track: SpotifyTrack | null }[] }>(`/playlists/${encodeURIComponent(id)}/tracks?limit=100`)
+export const getSpotifyPlaylists = (offset = 0) =>
+  api<{ items: SpotifyPlaylist[]; next: string | null }>(`/me/playlists?limit=50&offset=${offset}`)
+export async function getSpotifyPlaylistTracks(id: string, offset = 0) {
+  const page = await api<{ items: { item?: SpotifyTrack | null; track?: SpotifyTrack | null }[]; next: string | null }>(
+    `/playlists/${encodeURIComponent(id)}/items?limit=50&offset=${offset}`,
+  )
+  return {
+    tracks: (page.items || []).map((row) => row.item || row.track).filter((track): track is SpotifyTrack =>
+      !!track && track.type !== 'episode' && !!track.name && !!track.uri?.startsWith('spotify:track:')),
+    nextOffset: page.next ? offset + page.items.length : null,
+  }
+}

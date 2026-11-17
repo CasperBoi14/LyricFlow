@@ -4,10 +4,8 @@ import { LyricsView } from './components/LyricsView'
 import { IdentifyView } from './components/IdentifyView'
 import { SearchView } from './components/SearchView'
 import { LibraryView } from './components/LibraryView'
-import { AddToPlaylist } from './components/AddToPlaylist'
 import { FullscreenLyrics } from './components/FullscreenLyrics'
 import { ProviderSetup } from './components/ProviderSetup'
-import { tracks as demoTracks } from './data/tracks'
 import type { AdState, AppView, Track } from './types'
 import { formatTime } from './lib/lyrics'
 import { findAudioSource, isPreviewAudioUrl } from './lib/audio'
@@ -19,8 +17,10 @@ import { canUseSpotifyPlayback, isSpotifyUriBlocked, resetSpotifyPlayer } from '
 import {
   createPlaylist,
   loadPlaylists,
+  loadRecentTrackIds,
   loadSavedTracks,
   savePlaylists,
+  saveRecentTrackIds,
   saveSavedTracks,
   type Playlist,
 } from './lib/playlists'
@@ -30,7 +30,7 @@ const DELAY_LIMIT = 3000
 
 function loadDelayMs(): number {
   const raw = Number(localStorage.getItem(DELAY_KEY))
-  return Number.isFinite(raw) ? Math.max(-DELAY_LIMIT, Math.min(DELAY_LIMIT, raw)) : 0
+  return Number.isFinite(raw) ? Math.max(-DELAY_LIMIT, Math.min(DELAY_LIMIT, Math.round(raw / 100) * 100)) : 0
 }
 
 function normalize(s: string): string {
@@ -95,11 +95,12 @@ function AdBar({ ad }: { ad: AdState }) {
 
 export default function App() {
   const [view, setView] = useState<AppView>('search')
-  const [catalog, setCatalog] = useState<Track[]>(() => {
+  const [catalog, setCatalog] = useState<Track[]>(loadSavedTracks)
+  const [recentIds, setRecentIds] = useState<string[]>(loadRecentTrackIds)
+  const [selectedId, setSelectedId] = useState<string>(() => {
     const saved = loadSavedTracks()
-    return [...demoTracks, ...saved.filter((t) => !demoTracks.some((d) => d.id === t.id))]
+    return loadRecentTrackIds().find((id) => saved.some((track) => track.id === id)) || saved[0]?.id || ''
   })
-  const [selectedId, setSelectedId] = useState<string>(demoTracks[0]?.id ?? '')
   const [providerVersion, setProviderVersion] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
   const [playing, setPlaying] = useState(false)
@@ -121,6 +122,7 @@ export default function App() {
   const catalogRef = useRef(catalog)
   const spotifyTriedRef = useRef<Set<string>>(new Set())
   const resolvingRef = useRef<Set<string>>(new Set())
+  const recordedRef = useRef<string | null>(null)
 
   useEffect(() => { catalogRef.current = catalog }, [catalog])
 
@@ -145,6 +147,7 @@ export default function App() {
   })
 
   useEffect(() => {
+    recordedRef.current = null
     const pend = pendingRef.current
     pendingRef.current = null
     setTime(pend?.startAt ?? 0)
@@ -157,6 +160,12 @@ export default function App() {
 
   useEffect(() => { savePlaylists(playlists) }, [playlists])
   useEffect(() => { saveSavedTracks(catalog) }, [catalog])
+  useEffect(() => { saveRecentTrackIds(recentIds) }, [recentIds])
+  useEffect(() => {
+    if (!selected || !playing || time < 0.5 || recordedRef.current === selected.id) return
+    recordedRef.current = selected.id
+    setRecentIds((ids) => [selected.id, ...ids.filter((id) => id !== selected.id)].slice(0, 20))
+  }, [selected, playing, time])
 
   const spotifyHandled = useRef(false)
   useEffect(() => {
@@ -184,7 +193,7 @@ export default function App() {
 
   useEffect(() => {
     const track = catalogRef.current.find((t) => t.id === selectedId)
-    if (!track || track.source === 'demo') return
+    if (!track) return
 
     if (track.spotifyUri) {
       if (canUseSpotifyPlayback() && !isSpotifyUriBlocked(track.spotifyUri)) return
@@ -244,7 +253,7 @@ export default function App() {
   }, [selectedId, selectedSpotifyUri, selectedYoutubeId, selectedAudioUrl, providerVersion, spotifyReady])
 
   const prepareTrack = (t: Track) => {
-    if (t.source !== 'demo' && !t.spotifyUri && canUseSpotifyPlayback() && !spotifyTriedRef.current.has(t.id)) {
+    if (!t.spotifyUri && canUseSpotifyPlayback() && !spotifyTriedRef.current.has(t.id)) {
       setPendingSpotify(t.id)
     } else {
       setPendingSpotify(null)
@@ -254,7 +263,15 @@ export default function App() {
   const openTrack = (t: Track, startAt = 0) => {
     prepareTrack(t)
     setCatalog((c) => c.some((x) => x.id === t.id) ? c.map((x) => x.id === t.id ? t : x) : [t, ...c])
+    if (t.id === selectedId) {
+      pendingRef.current = null
+      seek(startAt)
+      setPlaying(true)
+      setFullscreen(true)
+      return
+    }
     pendingRef.current = { startAt, play: true }
+    setTime(0)
     setSelectedId(t.id)
     setFullscreen(true)
   }
@@ -265,6 +282,7 @@ export default function App() {
     const target = catalog[(currentIndex + 1 + catalog.length) % catalog.length]
     prepareTrack(target)
     pendingRef.current = { startAt: 0, play: playing }
+    setTime(0)
     setSelectedId(target.id)
   }
   const prev = () => {
@@ -272,6 +290,7 @@ export default function App() {
     const target = catalog[(currentIndex - 1 + catalog.length) % catalog.length]
     prepareTrack(target)
     pendingRef.current = { startAt: 0, play: playing }
+    setTime(0)
     setSelectedId(target.id)
   }
 
@@ -282,7 +301,7 @@ export default function App() {
   }
 
   const updateDelay = (ms: number) => {
-    const next = Math.max(-DELAY_LIMIT, Math.min(DELAY_LIMIT, Math.round(ms)))
+    const next = Math.max(-DELAY_LIMIT, Math.min(DELAY_LIMIT, Math.round(ms / 100) * 100))
     setDelayMs(next)
     localStorage.setItem(DELAY_KEY, String(next))
   }
@@ -315,7 +334,7 @@ export default function App() {
   const playbackDuration = audioDuration || selected?.duration || 0
 
   const liveHealth = useMemo(() => {
-    if (!selected || selected.source === 'demo') return null
+    if (!selected) return null
     const recent = live.matches.slice(0, 6)
     if (!recent.length) return null
     return Math.round((100 * recent.filter((m) => sameSong(m, selected)).length) / recent.length)
@@ -370,7 +389,7 @@ export default function App() {
             {view === 'identify' ? (
               <IdentifyView live={live} currentTrack={selected} health={liveHealth} onOpen={openTrack} />
             ) : view === 'search' ? (
-              <SearchView onOpen={openTrack} />
+              <SearchView onOpen={openTrack} recentTracks={recentIds.map((id) => catalog.find((track) => track.id === id)).filter((track): track is Track => !!track)} />
             ) : (
               <LibraryView
                 playlists={playlists}
@@ -393,16 +412,13 @@ export default function App() {
         <aside className="panel rightbar">
           {audioError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{audioError}</div>}
           {playbackNotice && <div className="notice" style={{ margin: '4px 10px 0' }}>{playbackNotice}</div>}
-          {selected?.source === 'demo' && (
-            <div className="notice" style={{ margin: '4px 10px 0' }}>Demo track · simulated playback. Search a real song for full audio.</div>
-          )}
-          {!hasBackend && selected && selected.source !== 'demo' && !selected.youtubeId && !selected.spotifyUri && (
+          {!hasBackend && selected && !selected.youtubeId && !selected.spotifyUri && (
             <div className="notice" style={{ margin: '4px 10px 0' }}>
               Playing a 30-second preview. Connect Spotify (Premium) to play full songs.
             </div>
           )}
           {!hasBackend && <ProviderSetup onSaved={onProvidersSaved} />}
-          <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} />
+          <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
           {selected?.youtubeId && (
             <div className="youtube-box">
               <div className="section-title">Audio source</div>
@@ -420,7 +436,7 @@ export default function App() {
           <div className="mini-cover" style={{ background: selected?.cover?.startsWith('http') ? `url(${selected.cover}) center/cover` : (selected?.cover || 'var(--panel-2)') }} />
           <div className="np-meta">
             <div className="t">{selected?.title ?? 'Nothing playing'}</div>
-            <div className="a">{selected ? `${selected.artist} • ${selected.album}${selected.source === 'demo' ? ' · demo (no audio)' : ''}` : 'Search a song to start'}</div>
+            <div className="a">{selected ? `${selected.artist} • ${selected.album}` : 'Search a song to start'}</div>
           </div>
         </div>
         <div className="transport">
@@ -437,15 +453,14 @@ export default function App() {
           </div>
         </div>
         <div className="extras">
-          <div className="delay-control" title="Lyric delay in milliseconds — positive values show lyrics later">
-            <span className="muted small">Delay</span>
-            <button className="icon-btn tiny" onClick={() => updateDelay(delayMs - 100)} aria-label="Lyrics earlier">−</button>
-            <button className="delay-value" onClick={() => updateDelay(0)} title="Reset delay">
+          <div className="delay-control" title="Adjust when each word appears in 100 ms steps">
+            <span className="muted small">Words</span>
+            <button className="icon-btn tiny" onClick={() => updateDelay(delayMs - 100)} aria-label="Show words 100 milliseconds earlier">−</button>
+            <button className="delay-value" onClick={() => updateDelay(0)} title="Reset word timing" aria-live="polite">
               {delayMs > 0 ? '+' : ''}{delayMs} ms
             </button>
-            <button className="icon-btn tiny" onClick={() => updateDelay(delayMs + 100)} aria-label="Lyrics later">+</button>
+            <button className="icon-btn tiny" onClick={() => updateDelay(delayMs + 100)} aria-label="Show words 100 milliseconds later">+</button>
           </div>
-          <AddToPlaylist playlists={playlists} track={selected} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
           <button className="btn" onClick={() => setFullscreen(true)}>Fullscreen</button>
         </div>
       </footer>

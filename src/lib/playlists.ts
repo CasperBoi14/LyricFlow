@@ -4,6 +4,7 @@ export type Playlist = { id: string; name: string; trackIds: string[]; createdAt
 
 const PLAYLIST_KEY = 'lf-playlists'
 const TRACK_KEY = 'lf-saved-tracks'
+const RECENT_KEY = 'lf-recent-tracks'
 
 const uid = () => `pl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -37,4 +38,16 @@ export function saveSavedTracks(tracks: Track[]) {
   try {
     localStorage.setItem(TRACK_KEY, JSON.stringify(persistable))
   } catch { /* storage full — keep the app usable */ }
+}
+
+export function loadRecentTrackIds(): string[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')
+    return Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string').slice(0, 20) : []
+  } catch { return [] }
+}
+
+export function saveRecentTrackIds(ids: string[]) {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(ids.slice(0, 20))) }
+  catch { /* storage full */ }
 }

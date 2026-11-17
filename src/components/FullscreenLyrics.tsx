@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { AdState, LyricLine, Track } from '../types'
-import { buildWordTimings, ensureTimedLyrics, getActiveLineIndex, wordIndexAt } from '../lib/lyrics'
+import { buildWordTimings, ensureTimedLyrics, getActiveLineIndex, lyricTime, wordIndexAt } from '../lib/lyrics'
 
 type Props = {
   track: Track | null
@@ -29,7 +29,7 @@ function seeded(value: string): number {
 }
 
 export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, ad, onDelayChange, onClose, onTogglePlay, onSeek }: Props) {
-  const t = currentTime - delayMs / 1000
+  const t = lyricTime(currentTime, delayMs)
   const total = duration || track?.duration || 0
   const timed = useMemo(() => track ? ensureTimedLyrics(track.lyrics, total, track.synced) : { lyrics: [] as LyricLine[], simulated: false }, [track, total])
   const lyrics = timed.lyrics
@@ -72,12 +72,12 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
 
       <header className="stage-top">
         <div className="stage-controls">
-          <div className="stage-delay" title="Lyric delay in milliseconds — positive values show lyrics later">
-            <button onClick={() => delay(-100)} aria-label="Lyrics earlier">−</button>
+          <div className="stage-delay" title="Adjust when each word appears in 100 ms steps">
+            <button onClick={() => delay(-100)} aria-label="Show words 100 milliseconds earlier">−</button>
             <button className="stage-delay-value" onClick={() => onDelayChange(0)} title="Reset lyric delay">
               {delayMs > 0 ? '+' : ''}{delayMs} ms
             </button>
-            <button onClick={() => delay(100)} aria-label="Lyrics later">+</button>
+            <button onClick={() => delay(100)} aria-label="Show words 100 milliseconds later">+</button>
           </div>
           <button className="stage-close" onClick={onClose} aria-label="Exit fullscreen lyrics">✕</button>
         </div>

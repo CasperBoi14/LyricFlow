@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { LyricLine, Track } from '../types'
-import { buildWordTimings, ensureTimedLyrics, getActiveLineIndex, wordIndexAt } from '../lib/lyrics'
+import type { Playlist } from '../lib/playlists'
+import { buildWordTimings, ensureTimedLyrics, getActiveLineIndex, lyricTime, wordIndexAt } from '../lib/lyrics'
+import { AddToPlaylist } from './AddToPlaylist'
 
 type Props = {
   track: Track | null
@@ -8,15 +10,18 @@ type Props = {
   duration: number
   delayMs: number
   onOpenFullscreen: () => void
+  playlists: Playlist[]
+  onAdd: (playlistId: string, trackId: string) => void
+  onCreate: (name: string) => Playlist
 }
 
-export function LyricsView({ track, currentTime, duration, delayMs, onOpenFullscreen }: Props) {
+export function LyricsView({ track, currentTime, duration, delayMs, onOpenFullscreen, playlists, onAdd, onCreate }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const activeRef = useRef<HTMLDivElement | null>(null)
 
   const timed = useMemo(() => track ? ensureTimedLyrics(track.lyrics, duration || track.duration, track.synced) : { lyrics: [] as LyricLine[], simulated: false }, [track, duration])
   const lyrics = timed.lyrics
-  const t = currentTime - delayMs / 1000
+  const t = lyricTime(currentTime, delayMs)
   const activeIndex = useMemo(() => getActiveLineIndex(lyrics, t), [lyrics, t])
   const activeLine = activeIndex >= 0 ? lyrics[activeIndex] : undefined
   const activeWords = useMemo(() => buildWordTimings(activeLine, lyrics[activeIndex + 1]), [activeLine, lyrics, activeIndex])
@@ -34,7 +39,10 @@ export function LyricsView({ track, currentTime, duration, delayMs, onOpenFullsc
     <div className="lyrics-pane">
       <div className="lyrics-header">
         <div className="section-title">Lyrics</div>
-        <button className="btn small" onClick={onOpenFullscreen}>⛶ Fullscreen</button>
+        <div className="row">
+          <AddToPlaylist playlists={playlists} track={track} onAdd={onAdd} onCreate={onCreate} placement="down" />
+          <button className="btn small" onClick={onOpenFullscreen}>⛶ Fullscreen</button>
+        </div>
       </div>
       <div className="lyrics-scroll" ref={containerRef}>
         {lyrics.map((line: LyricLine, i) => {
