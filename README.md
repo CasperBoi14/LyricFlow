@@ -42,9 +42,10 @@ and the `dist` output. In Vercel's project settings, leave Root Directory empty
 so the repository root is deployed. Verify `https://<project>.vercel.app/api/health`, then set
 the GitHub Actions repository variable `VITE_API_BASE_URL` to that Vercel origin
 and run the Pages workflow. The deployed address replaces any temporary tunnel
-saved by an earlier `?api=` link. Set `SPOTIFY_CLIENT_ID` and
-`SPOTIFY_CLIENT_SECRET` in Vercel's environment only if you want server-managed
-Spotify login; browser PKCE works with a Client ID entered in the app.
+saved by an earlier `?api=` link. Set `SPOTIFY_CLIENT_ID` in Vercel's Production
+environment so new devices can
+connect without entering the ID. `SPOTIFY_CLIENT_SECRET` is optional; browser
+PKCE works with the Client ID alone. Redeploy after changing environment variables.
 
 ## Backend contract
 
