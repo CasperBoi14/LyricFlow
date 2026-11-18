@@ -63,11 +63,16 @@ export class SpotifyApiError extends Error {
 
 const CLIENT_KEY = 'lf-spotify-client'
 const TOKEN_KEY = 'lf-spotify-token'
+const PLAYLIST_CACHE_KEY = 'lf-spotify-playlists-cache'
 const VERIFIER_KEY = 'lf-spotify-verifier'
 const STATE_KEY = 'lf-spotify-state'
-const RATE_LIMIT_KEY = 'lf-spotify-rate-limit-until'
-const RATE_LIMIT_BACKOFF_KEY = 'lf-spotify-rate-limit-backoff'
 const SCOPE = 'playlist-read-private playlist-read-collaborative user-read-private user-read-email user-read-playback-state user-modify-playback-state streaming'
+
+// Older releases stored an estimated cooldown and blocked requests before contacting Spotify.
+try {
+  localStorage.removeItem('lf-spotify-rate-limit-until')
+  localStorage.removeItem('lf-spotify-rate-limit-backoff')
+} catch { /* storage unavailable */ }
 
 const b64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
@@ -164,46 +169,26 @@ export function hasSpotifyPlayback(): boolean {
 export function disconnectSpotify() {
   cachedTokens = null
   localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(PLAYLIST_CACHE_KEY)
 }
 
-export function getSpotifyRateLimitUntil(): number {
+export function loadSpotifyPlaylistCache(): { items: SpotifyPlaylist[]; next: string | null } | null {
   try {
-    const until = Number(localStorage.getItem(RATE_LIMIT_KEY) || 0)
-    return Number.isFinite(until) && until > Date.now() ? until : 0
-  } catch { return 0 }
+    const saved = JSON.parse(localStorage.getItem(PLAYLIST_CACHE_KEY) || 'null')
+    if (Array.isArray(saved?.items)) return { items: saved.items, next: typeof saved.next === 'string' ? saved.next : null }
+  } catch { /* ignore invalid cache */ }
+  return null
 }
 
-function recordRateLimit(res: Response): void {
-  if (res.status !== 429) {
-    if (res.ok && !getSpotifyRateLimitUntil()) {
-      try { localStorage.removeItem(RATE_LIMIT_BACKOFF_KEY) } catch { /* storage unavailable */ }
-    }
-    return
-  }
-  const retryAfter = res.headers.get('Retry-After')
-  const seconds = retryAfter === null ? NaN : Number(retryAfter)
-  let until = Number.isFinite(seconds) && seconds >= 0 ? Date.now() + seconds * 1000 : 0
-  if (!until && retryAfter) {
-    const date = Date.parse(retryAfter)
-    if (Number.isFinite(date) && date > Date.now()) until = date
-  }
-  try {
-    if (!until) {
-      // Spotify may omit the CORS expose header, hiding Retry-After from JavaScript.
-      const previous = Number(localStorage.getItem(RATE_LIMIT_BACKOFF_KEY) || 0)
-      const step = Number.isFinite(previous) ? Math.min(3, Math.max(0, previous)) : 0
-      until = Date.now() + 3_600_000 * 2 ** step
-      localStorage.setItem(RATE_LIMIT_BACKOFF_KEY, String(step + 1))
-    }
-    localStorage.setItem(RATE_LIMIT_KEY, String(Math.max(until, getSpotifyRateLimitUntil())))
-  } catch { /* storage unavailable */ }
-}
-
-function spotifyError(message: string, status: number): SpotifyApiError {
+function spotifyError(message: string, status: number, res?: Response): SpotifyApiError {
   if (status === 429) {
-    const retryAt = getSpotifyRateLimitUntil()
-    const when = retryAt ? new Date(retryAt).toLocaleString() : 'later'
-    return new SpotifyApiError(`Spotify is limiting requests. Next attempt after ${when}.`, status, retryAt || null)
+    const header = res?.headers.get('Retry-After')
+    const seconds = header === null || header === undefined ? NaN : Number(header)
+    const parsed = Number.isFinite(seconds) && seconds >= 0 ? Date.now() + seconds * 1000 : header ? Date.parse(header) : NaN
+    const retryAt = Number.isFinite(parsed) && parsed > Date.now() ? parsed : null
+    return new SpotifyApiError(retryAt
+      ? `Spotify returned 429 Too Many Requests. Retry after ${new Date(retryAt).toLocaleString()}.`
+      : 'Spotify returned 429 Too Many Requests. Please retry later.', status, retryAt)
   }
   return new SpotifyApiError(message, status)
 }
@@ -294,6 +279,7 @@ export async function completeSpotifyLogin(): Promise<boolean> {
       expires_at: Date.now() + tokens.expires_in * 1000,
       scope: tokens.scope,
     })
+    localStorage.removeItem(PLAYLIST_CACHE_KEY)
     return true
   } finally {
     clean()
@@ -333,17 +319,13 @@ async function getAccessToken(forceRefresh = false): Promise<string | null> {
 }
 
 async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  if (getSpotifyRateLimitUntil()) throw spotifyError('', 429)
   let token = await getAccessToken()
   if (!token) throw new Error('Connect Spotify to continue.')
   const send = (accessToken: string) => {
     const headers = new Headers(init.headers)
     if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
     headers.set('Authorization', `Bearer ${accessToken}`)
-    return fetch(`https://api.spotify.com/v1${path}`, { ...init, headers }).then((res) => {
-      recordRateLimit(res)
-      return res
-    })
+    return fetch(`https://api.spotify.com/v1${path}`, { ...init, headers })
   }
   let res = await send(token)
   if (res.status === 401) {
@@ -361,7 +343,7 @@ async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Re
 async function api<T>(path: string): Promise<T> {
   const res = await authorizedFetch(path)
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw spotifyError((data as any)?.error?.message || `Spotify request failed (${res.status})`, res.status)
+  if (!res.ok) throw spotifyError((data as any)?.error?.message || `Spotify request failed (${res.status})`, res.status, res)
   return data as T
 }
 
@@ -378,7 +360,7 @@ export async function spotifyFetch(path: string, init: RequestInit = {}): Promis
       const data = await res.json()
       message = (data as any)?.error?.message || ''
     } catch { /* ignore */ }
-    throw spotifyError(message || `Spotify request failed (${res.status})`, res.status)
+    throw spotifyError(message || `Spotify request failed (${res.status})`, res.status, res)
   }
   return res
 }
@@ -389,7 +371,7 @@ export async function getSpotifyActivePlayback(): Promise<SpotifyActivePlayback 
   if (res.status === 204) return null
   if (!res.ok) {
     const data = await res.json().catch(() => null) as { error?: { message?: string } } | null
-    throw spotifyError(data?.error?.message || `Spotify playback state failed (${res.status})`, res.status)
+    throw spotifyError(data?.error?.message || `Spotify playback state failed (${res.status})`, res.status, res)
   }
   const data = await res.json() as {
     item?: SpotifyTrack | null
@@ -429,8 +411,13 @@ export async function findSpotifyTrack(title: string, artist: string): Promise<s
 }
 
 export const getSpotifyMe = () => api<SpotifyProfile>('/me')
-export const getSpotifyPlaylists = (offset = 0) =>
-  api<{ items: SpotifyPlaylist[]; next: string | null }>(`/me/playlists?limit=50&offset=${offset}`)
+export async function getSpotifyPlaylists(offset = 0) {
+  const page = await api<{ items: SpotifyPlaylist[]; next: string | null }>(`/me/playlists?limit=50&offset=${offset}`)
+  if (offset === 0) {
+    try { localStorage.setItem(PLAYLIST_CACHE_KEY, JSON.stringify(page)) } catch { /* storage unavailable */ }
+  }
+  return page
+}
 export async function getSpotifyPlaylistTracks(id: string, offset = 0) {
   const page = await api<{ items: { item?: SpotifyTrack | null; track?: SpotifyTrack | null }[]; next: string | null }>(
     `/playlists/${encodeURIComponent(id)}/items?limit=50&offset=${offset}`,

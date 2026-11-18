@@ -602,7 +602,7 @@ export default function App() {
         </main>
 
         <aside className="panel rightbar">
-          {syncError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{syncError} {!syncError.startsWith('Spotify is limiting') && <button className="link" onClick={() => void connectSpotify()}>Reconnect</button>}</div>}
+          {syncError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{syncError} {!syncError.startsWith('Spotify returned 429') && <button className="link" onClick={() => void connectSpotify()}>Reconnect</button>}</div>}
           {audioError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{audioError}</div>}
           {playbackNotice && <div className="notice" style={{ margin: '4px 10px 0' }}>{playbackNotice}</div>}
           {!hasBackend && selected && !selected.youtubeId && !selected.spotifyUri && (
