@@ -3,6 +3,7 @@ export type VisualSettings = {
   align: 'left' | 'center'
   position: 'top' | 'center' | 'bottom'
   highlight: 'glow' | 'underline' | 'solid'
+  wordAnimation: 'none' | 'fade' | 'lift'
   background: 'ambient' | 'artwork' | 'plain'
   blur: number
   transparency: number
@@ -15,7 +16,7 @@ export type VisualSettings = {
 export type VisualPreset = { name: string; settings: VisualSettings }
 
 export const DEFAULT_VISUAL_SETTINGS: VisualSettings = {
-  font: 'manrope', align: 'center', position: 'center', highlight: 'glow', background: 'ambient',
+  font: 'manrope', align: 'center', position: 'center', highlight: 'glow', wordAnimation: 'fade', background: 'ambient',
   blur: 30, transparency: 72, animations: true, widget: false, widgetPosition: 'bottom-right', screensaverMinutes: 0,
 }
 

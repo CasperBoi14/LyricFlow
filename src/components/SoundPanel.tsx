@@ -17,7 +17,6 @@ type Props = {
 export function SoundPanel({ source, track, remoteDevice, remoteDeviceType, volume, position, duration, playing, onVolumeChange, onRefresh }: Props) {
   if (!track) return null
   const directAudio = !remoteDevice && source.startsWith('audio:')
-  const youtube = !remoteDevice && source.startsWith('yt:')
   const spotify = !remoteDevice && source.startsWith('spotify:')
   let audioHost = ''
   if (directAudio) {
@@ -25,13 +24,11 @@ export function SoundPanel({ source, track, remoteDevice, remoteDeviceType, volu
   }
   const label = remoteDevice ? `Spotify on ${remoteDevice} (${remoteDeviceType || 'device'})`
     : spotify ? 'Spotify player in this browser'
-      : youtube ? 'YouTube player in this browser'
-        : directAudio ? `Direct audio from ${audioHost || 'this site'}`
-          : source.startsWith('hold:') ? 'Finding an audio source…'
-            : 'No live audio source'
+      : directAudio ? `Direct audio from ${audioHost || 'this site'}`
+        : source.startsWith('hold:') ? 'Finding an audio source…'
+          : 'No live audio source'
   const url = remoteDevice || spotify ? track.externalUrl
-    : youtube ? `https://www.youtube.com/watch?v=${source.slice(3)}`
-      : directAudio ? source.slice(6) : undefined
+    : directAudio ? source.slice(6) : undefined
 
   return (
     <section className="sound-panel" aria-label="Audio source and sound controls">
@@ -43,7 +40,7 @@ export function SoundPanel({ source, track, remoteDevice, remoteDeviceType, volu
         <span>Volume</span>
         <input type="range" min={0} max={100} value={volume}
           onChange={(event) => onVolumeChange(Number(event.target.value))}
-          disabled={!remoteDevice && !spotify && !youtube && !directAudio} />
+          disabled={!remoteDevice && !spotify && !directAudio} />
         <output>{volume}%</output>
       </label>
     </section>

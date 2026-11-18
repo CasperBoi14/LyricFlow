@@ -18,6 +18,7 @@ type Props = {
   onSpotifyConnect: (clientId?: string) => void
   onSpotifyDisconnect: () => void
   onDismissSpotifyError: () => void
+  onSpotifyTransferred: () => void
   spotifySyncMs: number
   onSpotifySyncChange: (value: number) => void
   visual: VisualSettings
@@ -35,7 +36,7 @@ export function SettingsView(props: Props) {
     <div className="settings-view">
       <SpotifyAccountSettings connected={props.spotifyConnected} connecting={props.spotifyConnecting} error={props.spotifyError}
         deviceName={props.spotifyDeviceName} onConnect={props.onSpotifyConnect} onDisconnect={props.onSpotifyDisconnect}
-        onDismissError={props.onDismissSpotifyError} />
+        onDismissError={props.onDismissSpotifyError} onTransferred={props.onSpotifyTransferred} />
       <section className="settings-card">
         <h2>Spotify sync</h2>
         <label className="settings-slider"><span>Check active playback <output>{props.spotifySyncMs / 1000}s</output></span>
@@ -67,6 +68,7 @@ export function SettingsView(props: Props) {
           <span>Word timing <output>{props.delayMs > 0 ? '+' : ''}{props.delayMs} ms</output></span>
           <input type="range" min={-3000} max={3000} step={100} value={props.delayMs} onChange={(event) => props.onDelayChange(Number(event.target.value))} />
         </label>
+        <p className="muted small">Word timestamps are used when the lyric source has them. Otherwise, words are estimated between synced lines. Adjust the offset if the source runs early or late.</p>
         <label className="settings-slider">
           <span>Text size <output>{props.lyricSize}%</output></span>
           <input type="range" min={80} max={160} step={5} value={props.lyricSize} onChange={(event) => props.onLyricSizeChange(Number(event.target.value))} />

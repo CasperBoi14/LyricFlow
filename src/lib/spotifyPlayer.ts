@@ -17,7 +17,7 @@ let unavailable: string | null = null
 let snapshot: SpotifySnapshot | null = null
 let onTrackChanged: (() => void) | null = null
 
-/** Tracks Spotify refused to play, so the app can fall back to YouTube without looping. */
+/** Tracks Spotify refused to play, so selection cannot retry them in a loop. */
 const blockedUris = new Set<string>()
 
 const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
@@ -204,6 +204,12 @@ export async function spotifyPausePlayback() {
   const current = player
   if (!current?.pause) return
   try { await current.pause() } catch { /* ignore */ }
+}
+
+export async function spotifyResumePlayback() {
+  const current = player
+  if (!current?.resume) throw new Error(unavailable || 'Spotify player is not ready.')
+  await current.resume()
 }
 
 export async function spotifySeekTo(seconds: number) {

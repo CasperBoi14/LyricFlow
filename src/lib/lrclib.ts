@@ -24,7 +24,6 @@ function toTrack(base: Partial<Track> & { title: string; artist: string; id: str
     lyrics: lyrics.length ? lyrics : [{ time: 0, text: 'No lyrics found for this track.' }],
     source: base.source,
     externalUrl: base.externalUrl,
-    youtubeId: base.youtubeId,
     spotifyUri: base.spotifyUri,
     synced,
     instrumental,
@@ -103,7 +102,7 @@ export function plainToLines(plain: string): LyricLine[] {
   return rows.map((text, i) => ({ time: i * step, text }))
 }
 
-export async function resolveToTrack(base: { id: string; title: string; artist: string; album?: string; duration?: number; cover?: string; source: Track['source']; youtubeId?: string; spotifyUri?: string; externalUrl?: string; tags?: string[] }): Promise<Track> {
+export async function resolveToTrack(base: { id: string; title: string; artist: string; album?: string; duration?: number; cover?: string; source: Track['source']; spotifyUri?: string; externalUrl?: string; tags?: string[] }): Promise<Track> {
   try {
     const got = await getLyricsFor(base.artist, base.title, base.album, base.duration)
     return toTrack({ ...base, album: got.albumName || base.album }, got.lyrics, got.duration || base.duration || 0, got.synced, got.instrumental)

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getSpotifyClientId, getSpotifyServerConfig, hasSpotifyPlayback, spotifyRedirectTarget } from '../lib/spotify'
+import { getSpotifyClientId, getSpotifyDevices, getSpotifyServerConfig, hasSpotifyPlayback, spotifyRedirectTarget, transferSpotifyPlayback, type SpotifyDevice } from '../lib/spotify'
 
 type Props = {
   connected: boolean
@@ -9,11 +9,34 @@ type Props = {
   onConnect: (clientId?: string) => void
   onDisconnect: () => void
   onDismissError: () => void
+  onTransferred: () => void
 }
 
-export function SpotifyAccountSettings({ connected, connecting, error, deviceName, onConnect, onDisconnect, onDismissError }: Props) {
+export function SpotifyAccountSettings({ connected, connecting, error, deviceName, onConnect, onDisconnect, onDismissError, onTransferred }: Props) {
   const [clientId, setClientId] = useState(getSpotifyClientId)
   const [serverConfigured, setServerConfigured] = useState(false)
+  const [devices, setDevices] = useState<SpotifyDevice[]>([])
+  const [deviceError, setDeviceError] = useState<string | null>(null)
+  const [moving, setMoving] = useState<string | null>(null)
+
+  const refreshDevices = async () => {
+    setDeviceError(null)
+    try { setDevices(await getSpotifyDevices()) }
+    catch (cause) { setDeviceError(cause instanceof Error ? cause.message : 'Could not load Spotify devices.') }
+  }
+
+  useEffect(() => { if (connected) void Promise.resolve().then(refreshDevices) }, [connected])
+
+  const moveTo = async (device: SpotifyDevice) => {
+    setMoving(device.id)
+    setDeviceError(null)
+    try {
+      await transferSpotifyPlayback(device.id)
+      onTransferred()
+      await refreshDevices()
+    } catch (cause) { setDeviceError(cause instanceof Error ? cause.message : 'Could not move playback.') }
+    finally { setMoving(null) }
+  }
 
   useEffect(() => {
     let active = true
@@ -30,6 +53,15 @@ export function SpotifyAccountSettings({ connected, connecting, error, deviceNam
           <div className="row wrap">
             <button className="btn spotify-btn" onClick={() => onConnect(serverConfigured ? undefined : clientId)} disabled={connecting}>Reconnect Spotify</button>
             <button className="btn ghost" onClick={onDisconnect}>Disconnect</button>
+          </div>
+          <div className="spotify-device-list">
+            <div className="settings-heading"><h3>Continue on a device</h3><button className="btn small ghost" onClick={() => void refreshDevices()}>Refresh devices</button></div>
+            <p className="muted small">Choose your phone or speaker before closing this page. Spotify playback continues on that device.</p>
+            {devices.map((device) => <button key={device.id} className="spotify-device" onClick={() => void moveTo(device)} disabled={!!moving || device.is_active}>
+              <span><strong>{device.name}</strong><small>{device.type}</small></span><span>{moving === device.id ? 'Moving…' : device.is_active ? 'Active' : 'Play here'}</span>
+            </button>)}
+            {!devices.length && !deviceError && <p className="muted small">Open Spotify on your phone or speaker, then refresh devices.</p>}
+            {deviceError && <p className="notice error">{deviceError}</p>}
           </div>
         </>
       ) : (

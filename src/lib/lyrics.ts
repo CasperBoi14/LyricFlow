@@ -92,7 +92,8 @@ export function buildWordTimings(line: LyricLine | null | undefined, next?: Lyri
   const natural = parts.reduce((n, p) => n + syllables(p) * 0.3 + 0.22, 0)
   const rawEnd = next ? next.time : line.time + Math.min(14, Math.max(2.2, natural))
   const breath = next ? Math.min(0.75, Math.max(0.14, (rawEnd - line.time) * 0.12)) : 0
-  const end = Math.max(line.time + 0.8, rawEnd - breath)
+  const naturalEnd = line.time + Math.min(14, Math.max(1.2, natural * 1.3))
+  const end = Math.max(line.time + 0.8, Math.min(rawEnd - breath, naturalEnd))
   const span = Math.max(0.5, end - line.time)
 
   const weights = parts.map(wordWeight)
@@ -156,7 +157,7 @@ export function ensureTimedLyrics(lyrics: LyricLine[], duration: number, knownSy
   if (!lyrics.length) return { lyrics: [{ time: 0, text: 'No lyrics available.' }], simulated: false }
   const times = lyrics.map(l => l.time)
   const unique = new Set(times)
-  const detected = unique.size > 3 && (lyrics.length > 1 && times[times.length - 1] - times[0] > 10)
+  const detected = unique.size > 1 && times[times.length - 1] - times[0] > 1 && times.every((time, index) => index === 0 || time >= times[index - 1])
   const alreadySynced = knownSynced === undefined ? detected : knownSynced && detected
   if (alreadySynced) return { lyrics, simulated: false }
   const usable = Math.max(duration - 6, lyrics.length * 2.5, 30)

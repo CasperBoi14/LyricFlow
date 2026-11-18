@@ -9,7 +9,6 @@ export type HistoryEntry = {
   cover: string
   source: Track['source']
   spotifyUri?: string
-  youtubeId?: string
   externalUrl?: string
   startedAt: number
   lastObservedAt: number
@@ -47,7 +46,6 @@ export function observeListening(entries: HistoryEntry[], track: Track, seconds:
     cover: track.cover,
     source: track.source,
     spotifyUri: track.spotifyUri,
-    youtubeId: track.youtubeId,
     externalUrl: track.externalUrl,
     startedAt: now,
     lastObservedAt: now,

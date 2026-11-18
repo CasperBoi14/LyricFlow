@@ -51,6 +51,14 @@ export type SpotifyActivePlayback = {
   deviceType: string
 }
 
+export type SpotifyDevice = {
+  id: string
+  name: string
+  type: string
+  is_active: boolean
+  is_restricted: boolean
+}
+
 export class SpotifyApiError extends Error {
   readonly status: number
   readonly retryAt: number | null
@@ -427,6 +435,14 @@ export async function findSpotifyTrack(title: string, artist: string): Promise<s
 }
 
 export const getSpotifyMe = () => api<SpotifyProfile>('/me')
+export async function getSpotifyDevices(): Promise<SpotifyDevice[]> {
+  const data = await api<{ devices?: (SpotifyDevice & { id: string | null })[] }>('/me/player/devices')
+  return (data.devices || []).filter((device): device is SpotifyDevice => !!device.id && !device.is_restricted)
+}
+
+export async function transferSpotifyPlayback(deviceId: string): Promise<void> {
+  await spotifyFetch('/me/player', { method: 'PUT', body: JSON.stringify({ device_ids: [deviceId], play: true }) })
+}
 export async function getSpotifyPlaylists(offset = 0, force = false): Promise<SpotifyPlaylistPage> {
   if (offset !== 0) return api(`/me/playlists?limit=50&offset=${offset}`)
   if (!force && recentPlaylistPage && Date.now() - recentPlaylistAt < 60_000) return recentPlaylistPage

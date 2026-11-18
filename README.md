@@ -4,9 +4,9 @@ LyricFlow is deployed automatically to GitHub Pages from `main`:
 
 `https://casperboi14.github.io/LyricFlow/`
 
-The GitHub Pages workflow builds the Vite app and publishes `dist`. Songs play
-through Spotify when an account is connected (Premium required), with the
-YouTube IFrame player as the fallback when Spotify cannot play a track.
+The GitHub Pages workflow builds the Vite app and publishes `dist`. Full songs
+play through Spotify when an account is connected (Premium required). When
+Spotify is disconnected, short iTunes previews may be available.
 Microphone recognition uses AudD, and lyrics come from LRCLIB.
 
 Search has separate Songs and Artists modes. Artist profiles use iTunes artist
@@ -16,7 +16,7 @@ lyrics widget, and an optional ambient screensaver. The app also has a local
 listening dashboard and timeline, and full-screen lyric controls.
 Artist and song data come from the existing providers.
 
-Active Spotify Connect playback is checked every 12 seconds by default while
+Active Spotify Connect playback is checked every 3 seconds by default while
 playing on a visible page. Settings allows 3–30 seconds; idle and hidden tabs
 check less often. Mobile browsers may suspend JavaScript while another app is
 in front, so the page refreshes playback when it becomes visible again unless
@@ -25,6 +25,13 @@ respected across API calls. The playlist browser retains the last loaded list,
 automatically retries after a rate limit, and offers a manual retry when allowed.
 The last loaded tracks for up to eight playlists are also available during rate
 limits. An upstream 429 cannot be removed by the website.
+
+In Settings, **Continue on a device** lists available Spotify Connect devices.
+Choose a phone or speaker before closing this page to keep music playing there.
+Audio started in this browser stops when its tab closes. Synced lyric records
+with word timestamps use those timestamps; records with only line timestamps
+show estimated word timing, adjustable with the timing control. Settings offers
+no animation, a soft fade, and a gentle rise for the active word.
 
 ## Spotify setup
 
@@ -68,7 +75,7 @@ PKCE works with the Client ID alone. Redeploy after changing environment variabl
 
 The frontend expects these JSON endpoints:
 
-- `GET /api/audio/find?q=...` -> `{ "youtubeId": "..." }` or `{ "audioUrl": "..." }`, optional `cover`
+- `GET /api/audio/find?q=...` -> `{ "audioUrl": "..." }`, optional `cover`
 - `GET /api/music/search?q=...` -> `{ "results": [...] }` or an array of tracks
 - `GET /api/lyrics/search?q=...` -> LRCLIB search array
 - `GET /api/lyrics/get?artist_name=...&track_name=...` -> LRCLIB record
@@ -77,8 +84,8 @@ The frontend expects these JSON endpoints:
 - `GET /api/spotify/login?state=...&challenge=...&redirect_uri=...` -> `{ "url": "https://accounts.spotify.com/authorize?..." }`
 - `POST /api/spotify/token` with a JSON token request body -> Spotify token response
 
-Full songs are played with the YouTube IFrame player. If the backend returns a
-licensed `audioUrl`, the frontend plays it directly instead.
+The audio lookup returns a short iTunes preview. A backend that supplies a
+licensed `audioUrl` may also be used for direct playback.
 
 ## Local development
 

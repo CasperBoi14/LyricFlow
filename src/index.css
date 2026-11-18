@@ -199,7 +199,6 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
 .line .words span.w-active { color: #fff; }
 .translation { font-size: 11.5px; color: #9aa4ba; margin-top: 3px; font-weight: 400; }
 
-.youtube-box { padding: 10px 12px 12px; border-top: 1px solid var(--line); }
 .yt-source { display: flex; align-items: center; gap: 10px; margin-top: 7px; padding: 7px; border-radius: 10px; color: var(--text); text-decoration: none; border: 1px solid var(--line); background: rgba(255,255,255,.03); font-size: 12px; transition: background .15s; }
 .yt-source:hover { background: rgba(255,255,255,.06); }
 .yt-source img { width: 68px; height: 40px; border-radius: 6px; object-fit: cover; flex: 0 0 auto; }
@@ -605,32 +604,6 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
 .spotify-chip {
   display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 99px;
   border: 1px solid rgba(30,215,96,.28); background: rgba(30,215,96,.08); color: #a7f3c6; font-size: 11.5px;
-}
-
-/* ---------- Ads ---------- */
-.ad-bar {
-  width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center;
-  padding: 4px 8px; border: 1px solid rgba(255,190,90,.28); border-radius: 8px;
-  background: rgba(255,190,90,.07); color: #ffd79a; font-size: 10.5px;
-}
-.ad-tag {
-  font-size: 9px; font-weight: 700; letter-spacing: .1em; padding: 1px 5px;
-  border-radius: 4px; background: #ffcf7a; color: #241802;
-}
-.ad-track { height: 3px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; }
-.ad-track i {
-  display: block; height: 100%; border-radius: inherit;
-  background: linear-gradient(90deg, #ffb347, #ffe0a3);
-  transition: width .2s linear;
-}
-.ad-track.indeterminate i { width: 100% !important; animation: adPulse 1.2s ease-in-out infinite; }
-@keyframes adPulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-.ad-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.stage-ad {
-  position: relative; z-index: 2; width: min(560px, 76vw); margin: 0 auto 8px;
-  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
-  padding: 8px 12px; border: 1px solid rgba(255,190,90,.28); border-radius: 10px;
-  background: rgba(255,190,90,.08); color: #ffd79a; font-size: 11.5px;
 }
 
 @media (prefers-reduced-motion: reduce) {

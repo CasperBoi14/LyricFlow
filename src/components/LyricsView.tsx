@@ -24,7 +24,7 @@ export function LyricsView({ track, currentTime, duration, delayMs, onOpenFullsc
   const t = lyricTime(currentTime, delayMs)
   const activeIndex = useMemo(() => getActiveLineIndex(lyrics, t), [lyrics, t])
   const activeLine = activeIndex >= 0 ? lyrics[activeIndex] : undefined
-  const activeWords = useMemo(() => activeLine?.words?.length ? buildWordTimings(activeLine, lyrics[activeIndex + 1]) : [], [activeLine, lyrics, activeIndex])
+  const activeWords = useMemo(() => activeLine ? buildWordTimings(activeLine, lyrics[activeIndex + 1]) : [], [activeLine, lyrics, activeIndex])
   const activeWord = wordIndexAt(activeWords, t)
 
   useEffect(() => {
@@ -49,7 +49,8 @@ export function LyricsView({ track, currentTime, duration, delayMs, onOpenFullsc
         </div>
       </div>
       <div className="lyrics-scroll" ref={containerRef}>
-        {timed.simulated && <div className="muted small lyric-accuracy">Line timing is estimated for these lyrics.</div>}
+        {timed.simulated ? <div className="muted small lyric-accuracy">No synced lyrics available. Line timing is estimated.</div>
+          : activeLine && !activeLine.words?.length && <div className="muted small lyric-accuracy">Word timing is estimated between synced lines.</div>}
         {lyrics.map((line: LyricLine, i) => {
           const isActive = i === activeIndex
           const isPast = i < activeIndex
@@ -62,7 +63,7 @@ export function LyricsView({ track, currentTime, duration, delayMs, onOpenFullsc
               <div className="words">
                 {isActive && activeWords.length ? (
                   activeWords.map((w, wi) => (
-                    <span key={wi} className={wi <= activeWord ? 'w-active' : ''}>{w.text}{' '}</span>
+                    <span key={`${track.id}-${i}-${wi}`} className={`lyric-word${wi === activeWord ? ' current' : wi < activeWord ? ' sung' : ' upcoming'}`}>{w.text}</span>
                   ))
                 ) : (
                   line.text

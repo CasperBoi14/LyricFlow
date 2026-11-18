@@ -28,6 +28,7 @@ export function ThemeStudio({ value, presets, onChange, onSave, onApply, onDelet
         {select('align', 'Text alignment', [{ value: 'center', label: 'Center' }, { value: 'left', label: 'Left' }])}
         {select('position', 'Lyric position', [{ value: 'center', label: 'Center' }, { value: 'top', label: 'Top' }, { value: 'bottom', label: 'Bottom' }])}
         {select('highlight', 'Highlight', [{ value: 'glow', label: 'Glow' }, { value: 'underline', label: 'Underline' }, { value: 'solid', label: 'Solid' }])}
+        {select('wordAnimation', 'Word animation', [{ value: 'none', label: 'None' }, { value: 'fade', label: 'Soft fade' }, { value: 'lift', label: 'Gentle rise' }])}
         {select('background', 'Background', [{ value: 'ambient', label: 'Ambient colors' }, { value: 'artwork', label: 'Album artwork' }, { value: 'plain', label: 'Plain dark' }])}
       </div>
       <label className="settings-slider"><span>Background blur <output>{value.blur}px</output></span><input type="range" min={0} max={70} step={5} value={value.blur} onChange={(event) => onChange({ blur: Number(event.target.value) })} /></label>

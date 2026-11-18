@@ -15,7 +15,6 @@ type SearchRow = {
   cover?: string
   artworkUrl100?: string
   source?: Track['source']
-  youtubeId?: string
   spotifyUri?: string
   externalUrl?: string
   trackViewUrl?: string
@@ -34,7 +33,6 @@ function normalize(row: SearchRow): SearchResult | null {
     duration: Math.round(Number(row.duration ?? (row.trackTimeMillis || 0) / 1000) || 0),
     cover: (row.cover || row.artworkUrl100 || '').replace('100x100bb', '400x400bb'),
     source: row.source || 'search',
-    youtubeId: row.youtubeId,
     spotifyUri: row.spotifyUri,
     externalUrl: row.externalUrl || row.trackViewUrl,
   }

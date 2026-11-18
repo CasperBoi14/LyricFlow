@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import type { AdState, LyricLine, Track } from '../types'
+import type { LyricLine, Track } from '../types'
 import { buildWordTimings, ensureTimedLyrics, getActiveLineIndex, lyricTime, wordIndexAt } from '../lib/lyrics'
 
 type Props = {
@@ -8,7 +8,6 @@ type Props = {
   duration: number
   playing: boolean
   delayMs: number
-  ad: AdState | null
   onDelayChange: (ms: number) => void
   onClose: () => void
   onTogglePlay: () => void
@@ -18,17 +17,7 @@ type Props = {
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 const DELAY_LIMIT = 3000
 
-/** Stable per-word pseudo-random value so sizes do not change on every render. */
-function seeded(value: string): number {
-  let hash = 2166136261
-  for (let i = 0; i < value.length; i++) {
-    hash ^= value.charCodeAt(i)
-    hash = Math.imul(hash, 16777619)
-  }
-  return (hash >>> 0) / 4294967295
-}
-
-export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, ad, onDelayChange, onClose, onTogglePlay, onSeek }: Props) {
+export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, onDelayChange, onClose, onTogglePlay, onSeek }: Props) {
   const t = lyricTime(currentTime, delayMs)
   const total = duration || track?.duration || 0
   const timed = useMemo(() => track ? ensureTimedLyrics(track.lyrics, total, track.synced) : { lyrics: [] as LyricLine[], simulated: false }, [track, total])
@@ -37,24 +26,8 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
   const line = activeIndex >= 0 ? lyrics[activeIndex] : undefined
   const nextLine = lyrics[activeIndex + 1]
 
-  const words = useMemo(() => line?.words?.length ? buildWordTimings(line, nextLine) : [], [line, nextLine])
-  const revealed = wordIndexAt(words, t) + 1
-
-  const tokens = useMemo(() => words.slice(0, Math.max(0, revealed)).map((word, i) => ({
-    text: word.text,
-    scale: 0.72 + seeded(`${track?.id ?? 'track'}:${activeIndex}:${i}:${word.text}`) * 0.78,
-    current: i === revealed - 1,
-  })), [words, revealed, activeIndex, track?.id])
-
-  /** When the last word has been sung, the sentence clears until the next one starts. */
-  const sentenceEndsAt = useMemo(() => {
-    if (!line || !words.length) return 0
-    const gaps = words.slice(1).map((word, i) => word.t - words[i].t)
-    const average = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 2.4
-    return words[words.length - 1].t + Math.max(0.9, Math.min(4, average))
-  }, [line, words])
-
-  const sentenceDone = !!nextLine && t >= sentenceEndsAt
+  const words = useMemo(() => line ? buildWordTimings(line, nextLine) : [], [line, nextLine])
+  const activeWord = wordIndexAt(words, t)
   const lineProgress = useMemo(() => {
     if (!line) return 0
     const end = nextLine?.time ?? line.time + 4
@@ -97,44 +70,32 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
         </div>
       </header>
 
-      {ad && (
-        <div className="stage-ad" role="status" aria-live="polite">
-          <span className="ad-tag">AD</span>
-          <div className={`ad-track${ad.total > 0 ? '' : ' indeterminate'}`}>
-            <i style={{ width: `${(ad.total > 0 ? Math.max(0, Math.min(1, 1 - ad.remaining / ad.total)) : 0) * 100}%` }} />
-          </div>
-          <span className="ad-time">{ad.total > 0 ? `${Math.ceil(Math.max(0, ad.remaining))}s until the song` : 'waiting for the song'}</span>
-        </div>
-      )}
-
       <main className="stage-body">
         <div className="stage-meta">
           <div className="stage-title">{track.title}</div>
           <div className="stage-artist">{track.artist}</div>
+          <div className="stage-timing-note">{timed.simulated ? 'Line timing estimated' : line?.words?.length ? 'Word synced lyrics' : 'Word timing estimated from synced lines'}</div>
         </div>
 
         <div className="stage-track">
           <div className="line-progress"><i style={{ transform: `scaleX(${lineProgress})` }} /></div>
-          <div className="stage-sentence" key={`${track.id}-${activeIndex}`} aria-live="polite">
-            {sentenceDone ? null : (
-              words.length ? tokens.map((token, i) => (
+          <div className="stage-sentence" key={`${track.id}-${activeIndex}`} aria-live="off">
+            {words.length ? words.map((word, i) => (
                 <span
-                  key={`${i}-${token.text}`}
-                  className={`word-token${token.current ? ' current' : ''}`}
-                  style={{ fontSize: `calc(clamp(26px, 4.4vw, 68px) * ${token.scale.toFixed(3)} * var(--lyrics-scale, 1))` }}
+                  key={`${i}-${word.text}`}
+                  className={`word-token${i === activeWord ? ' current' : i < activeWord ? ' sung' : ' upcoming'}`}
                 >
-                  {token.text}
+                  {word.text}
                 </span>
-              )) : <span className="stage-line-fallback">{line?.text || 'Waiting for lyrics…'}</span>
-            )}
+              )) : <span className="stage-line-fallback">{line?.text || 'Waiting for lyrics…'}</span>}
           </div>
         </div>
       </main>
 
       <footer className="stage-footer">
-        <button className="stage-play" onClick={onTogglePlay} disabled={!!ad} aria-label={playing ? 'Pause' : 'Play'}>{playing ? '❚❚' : '▶'}</button>
+        <button className="stage-play" onClick={onTogglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? '❚❚' : '▶'}</button>
         <div className="stage-progress">
-          <input type="range" min={0} max={total || 300} step={0.05} value={Math.min(currentTime, total || 300)} onChange={(e) => onSeek(Number(e.target.value))} disabled={!!ad} aria-label="Seek" />
+          <input type="range" min={0} max={total || 300} step={0.05} value={Math.min(currentTime, total || 300)} onChange={(e) => onSeek(Number(e.target.value))} aria-label="Seek" />
           <div className="stage-times"><span>{fmt(currentTime)}</span><span>{fmt(total)}</span></div>
         </div>
       </footer>

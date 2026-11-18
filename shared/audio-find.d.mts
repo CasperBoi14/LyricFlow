@@ -1,6 +1,4 @@
-export type AudioSource =
-  | { youtubeId: string; cover: string }
-  | { audioUrl: string; cover?: string }
+export type AudioSource = { audioUrl: string; cover?: string }
 
 export type FindAudioOptions = {
   timeoutMs?: number
