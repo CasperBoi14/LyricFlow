@@ -33,7 +33,11 @@ export function LyricsView({ track, currentTime, duration, delayMs, onOpenFullsc
     }
   }, [activeIndex, track?.id])
 
-  if (!track) return <div className="empty">Select or search a track to see live web-sourced subtitles.</div>
+  if (!track) return <div className="lyrics-empty">
+    <span className="lyrics-empty-mark" aria-hidden="true">♪</span>
+    <h2>Lyrics live here</h2>
+    <p>Choose a song to follow its words as the music plays.</p>
+  </div>
 
   return (
     <div className="lyrics-pane">

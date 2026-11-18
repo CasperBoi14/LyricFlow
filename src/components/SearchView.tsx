@@ -88,6 +88,11 @@ export function SearchView({ onOpen, recentTracks }: { onOpen: (t: Track) => voi
 
   return (
     <div className="search-view">
+      <div className="search-intro">
+        <span className="eyebrow">EXPLORE MUSIC</span>
+        <h2>Find the words behind the music.</h2>
+        <p>Search for a song or artist, then follow every line as it plays.</p>
+      </div>
       <div className="search-modes" role="group" aria-label="Search type">
         <button className={mode === 'songs' ? 'active' : ''} onClick={() => { requestRef.current += 1; setMode('songs'); setError(null); setSearching(false) }}>Songs</button>
         <button className={mode === 'artists' ? 'active' : ''} onClick={() => { requestRef.current += 1; setMode('artists'); setError(null); setSearching(false) }}>Artists</button>

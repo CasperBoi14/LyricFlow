@@ -13,9 +13,8 @@ Search has separate Songs and Artists modes. Artist profiles use iTunes artist
 IDs for song lists and a Wikipedia photo when available. The Settings tab holds
 Spotify connection, playback sync, volume, lyric timing, visual themes, a floating
 lyrics widget, and an optional ambient screensaver. The app also has a local
-listening dashboard and timeline, lyric insights, and full-screen lyric controls.
-Artist and song data come from the existing providers; the AI interpretation
-button uses an on-device browser model only when the browser supports it.
+listening dashboard and timeline, and full-screen lyric controls.
+Artist and song data come from the existing providers.
 
 Active Spotify Connect playback is checked every 12 seconds by default while
 playing on a visible page. Settings allows 3–30 seconds; idle and hidden tabs

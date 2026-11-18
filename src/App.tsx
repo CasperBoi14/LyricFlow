@@ -21,7 +21,6 @@ import { DEFAULT_VISUAL_SETTINGS, loadVisualPresets, loadVisualSettings, saveVis
 import { useAtmosphere } from './lib/useAtmosphere'
 import { FloatingLyricsWidget } from './components/FloatingLyricsWidget'
 import { AmbientScreensaver } from './components/AmbientScreensaver'
-import { SongInsights } from './components/SongInsights'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
 import { beginSpotifyLogin, completeSpotifyLogin, disconnectSpotify, findSpotifyTrack, hasSpotifyAuth, setSpotifyClientId, spotifyFetch, type SpotifyActivePlayback } from './lib/spotify'
 import { canUseSpotifyPlayback, getSpotifyDeviceId, isSpotifyUriBlocked, resetSpotifyPlayer, subscribeSpotifyTrackChanges } from './lib/spotifyPlayer'
@@ -612,6 +611,11 @@ export default function App() {
     <div className={`app theme-${visual.background} font-${visual.font} align-${visual.align} position-${visual.position} highlight-${visual.highlight}${visual.animations ? '' : ' no-motion'}`} style={appStyle}>
       <div className="shell">
         <aside className="panel sidebar">
+          <div className="brand" aria-label="LyricFlow">
+            <span className="brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
+            <span className="brand-name">Lyric<span>Flow</span><small>Music, in focus</small></span>
+          </div>
+          <div className="sidebar-label">Discover</div>
           <nav className="nav" aria-label="Main">
             <button className={view === 'search' ? 'active' : ''} onClick={() => setView('search')}>
               <SearchIcon />
@@ -638,7 +642,7 @@ export default function App() {
           </nav>
 
           <div className="sidebar-foot">
-            <p className="production">LyricFlow production 2026</p>
+            <p className="production">LYRICFLOW / 2026</p>
           </div>
         </aside>
 
@@ -704,7 +708,6 @@ export default function App() {
           <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
           <SoundPanel source={playbackSource} track={selected} remoteDevice={remotePlayback?.deviceName} remoteDeviceType={remotePlayback?.deviceType}
             volume={volume} position={time} duration={playbackDuration} playing={playing} onVolumeChange={updateVolume} onRefresh={refreshSpotifyPlayback} />
-          <SongInsights track={selected} />
         </aside>
       </div>
 

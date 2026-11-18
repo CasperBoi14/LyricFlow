@@ -214,16 +214,6 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
 .sound-row input:disabled { opacity: .35; }
 .sound-row output { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
 .sound-panel p { margin: 0; line-height: 1.4; }
-.song-insights { padding: 14px 12px; border-top: 1px solid var(--line); display: grid; gap: 7px; }
-.song-insights h3, .song-insights p { margin: 0; }
-.song-insights h3 { font-size: 15px; }
-.song-insights > p { font-size: 12px; color: var(--muted); }
-.insight-facts, .insight-tags { display: flex; flex-wrap: wrap; gap: 5px; }
-.insight-facts span, .insight-tags span { font-size: 10px; padding: 3px 7px; border-radius: 99px; border: 1px solid var(--line); color: var(--soft); }
-.ai-insight { padding: 10px; border: 1px solid rgba(157,176,255,.25); border-radius: 9px; background: rgba(157,176,255,.07); }
-.ai-insight strong { font-size: 11px; color: var(--accent); }
-.ai-insight p { margin: 6px 0; color: var(--text); font-size: 12px; }
-.ai-insight small { color: var(--muted); }
 
 .settings-view { max-width: 700px; margin: 0 auto; display: grid; gap: 14px; animation: settingsSlide .32s ease-out both; }
 @keyframes settingsSlide { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
