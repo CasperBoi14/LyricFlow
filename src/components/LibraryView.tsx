@@ -153,6 +153,7 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
   const [profile, setProfile] = useState<SpotifyProfile | null>(null)
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
   const [loadingPlaylists, setLoadingPlaylists] = useState(ready)
+  const [reloadPlaylists, setReloadPlaylists] = useState(0)
   const [nextPlaylistOffset, setNextPlaylistOffset] = useState<number | null>(null)
   const [loadingMorePlaylists, setLoadingMorePlaylists] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -166,15 +167,15 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
   useEffect(() => {
     if (!ready) return
     let cancelled = false
-    getSpotifyMe()
-      .then(async (me) => {
-        if (cancelled) return
-        setProfile(me)
-        const list = await getSpotifyPlaylists()
+    getSpotifyPlaylists()
+      .then((list) => {
         if (cancelled) return
         setPlaylists(list.items || [])
         setNextPlaylistOffset(list.next ? (list.items || []).length : null)
         setLocalError(null)
+        void getSpotifyMe().then((me) => {
+          if (!cancelled) setProfile(me)
+        }).catch(() => { /* profile is optional for browsing playlists */ })
       })
       .catch((e: any) => {
         if (cancelled) return
@@ -185,7 +186,7 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
       })
       .finally(() => { if (!cancelled) setLoadingPlaylists(false) })
     return () => { cancelled = true }
-  }, [ready, onReadyChange])
+  }, [ready, onReadyChange, reloadPlaylists])
 
   const loading = ready && loadingPlaylists && !localError
 
@@ -361,7 +362,10 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
       {loading ? (
         <div className="empty">Loading your playlists…</div>
       ) : playlists.length === 0 ? (
-        <div className="empty">{localError ? 'Spotify playlists could not be loaded.' : 'No Spotify playlists found for this account.'}</div>
+        <div className="empty">
+          {localError ? 'Spotify playlists could not be loaded.' : 'No Spotify playlists found for this account.'}
+          {localError && <button className="btn small" onClick={() => { setLoadingPlaylists(true); setReloadPlaylists((count) => count + 1) }}>Retry playlists</button>}
+        </div>
       ) : (
         <div className="lib-split">
           <div className="playlist-list">

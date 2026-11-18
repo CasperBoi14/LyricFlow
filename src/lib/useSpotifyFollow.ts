@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { getSpotifyActivePlayback, SpotifyApiError, type SpotifyActivePlayback } from './spotify'
+import { getSpotifyActivePlayback, getSpotifyRateLimitUntil, SpotifyApiError, type SpotifyActivePlayback } from './spotify'
 
 /** Keep the open page aligned with the account's active Spotify Connect device. */
 export function useSpotifyFollow(
@@ -19,7 +19,7 @@ export function useSpotifyFollow(
     const poll = async () => {
       if (stopped || pending) return
       pending = true
-      let wait = document.hidden ? 15_000 : 4_000
+      let wait = document.hidden ? 60_000 : 15_000
       try {
         const playback = await getSpotifyActivePlayback()
         if (!stopped) {
@@ -30,11 +30,11 @@ export function useSpotifyFollow(
         if (!stopped) {
           if (error instanceof SpotifyApiError && error.status === 403) {
             callbacks.current.onError('Spotify denied playback sync. Reconnect or check your app access.')
-            wait = 30_000
+            wait = document.hidden ? 60_000 : 30_000
           } else if (error instanceof SpotifyApiError && error.status === 429) {
-            wait = 30_000
+            wait = Math.max(30_000, getSpotifyRateLimitUntil() - Date.now() + 1_000)
           } else {
-            wait = document.hidden ? 20_000 : 8_000
+            wait = document.hidden ? 60_000 : 30_000
           }
         }
       } finally {
