@@ -20,25 +20,23 @@ export function useSpotifyFollow(
     const poll = async () => {
       if (stopped || pending) return
       pending = true
-      let wait = document.hidden ? 60_000 : 8_000
+      let wait = 3_000
       try {
         const playback = await getSpotifyActivePlayback()
         if (!stopped) {
           callbacks.current.onError(null)
           callbacks.current.onPlayback(playback)
-          if (!document.hidden && playback?.playing && playback.duration > playback.position) {
-            wait = Math.min(wait, Math.max(3_000, (playback.duration - playback.position) * 1_000 + 350))
-          }
         }
       } catch (error) {
         if (!stopped) {
           if (error instanceof SpotifyApiError && error.status === 403) {
             callbacks.current.onError('Spotify denied playback sync. Reconnect or check your app access.')
-            wait = document.hidden ? 60_000 : 30_000
+            wait = 30_000
           } else if (error instanceof SpotifyApiError && error.status === 429) {
+            callbacks.current.onError(error.message)
             wait = Math.max(30_000, getSpotifyRateLimitUntil() - Date.now() + 1_000)
           } else {
-            wait = document.hidden ? 60_000 : 30_000
+            wait = 30_000
           }
         }
       } finally {

@@ -107,7 +107,7 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
                 <span
                   key={`${i}-${token.text}`}
                   className={`word-token${token.current ? ' current' : ''}`}
-                  style={{ fontSize: `calc(clamp(26px, 4.4vw, 68px) * ${token.scale.toFixed(3)})` }}
+                  style={{ fontSize: `calc(clamp(26px, 4.4vw, 68px) * ${token.scale.toFixed(3)} * var(--lyrics-scale, 1))` }}
                 >
                   {token.text}
                 </span>

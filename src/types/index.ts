@@ -36,7 +36,7 @@ export type AdState = {
   total: number
 }
 
-export type AppView = 'library' | 'identify' | 'search'
+export type AppView = 'library' | 'identify' | 'search' | 'settings'
 
 export type SearchResult = {
   id: string

@@ -1,17 +1,20 @@
 import type { Track } from '../types'
-import type { SoundSettings } from '../lib/audioEffects'
+import { formatTime } from '../lib/lyrics'
 
 type Props = {
   source: string
   track: Track | null
   remoteDevice?: string
   remoteDeviceType?: string
-  sound: SoundSettings
-  onChange: (key: keyof SoundSettings, value: number) => void
+  volume: number
+  position: number
+  duration: number
+  playing: boolean
+  onVolumeChange: (value: number) => void
   onRefresh: () => void
 }
 
-export function SoundPanel({ source, track, remoteDevice, remoteDeviceType, sound, onChange, onRefresh }: Props) {
+export function SoundPanel({ source, track, remoteDevice, remoteDeviceType, volume, position, duration, playing, onVolumeChange, onRefresh }: Props) {
   if (!track) return null
   const directAudio = !remoteDevice && source.startsWith('audio:')
   const youtube = !remoteDevice && source.startsWith('yt:')
@@ -30,25 +33,19 @@ export function SoundPanel({ source, track, remoteDevice, remoteDeviceType, soun
     : youtube ? `https://www.youtube.com/watch?v=${source.slice(3)}`
       : directAudio ? source.slice(6) : undefined
 
-  const slider = (key: keyof SoundSettings, title: string, min: number, max: number, disabled = false) => (
-    <label className="sound-row" key={key}>
-      <span>{title}</span>
-      <input type="range" min={min} max={max} step={1} value={sound[key]}
-        onChange={(event) => onChange(key, Number(event.target.value))} disabled={disabled} />
-      <output>{sound[key]}{key === 'volume' || key === 'vocals' ? '%' : ' dB'}</output>
-    </label>
-  )
-
   return (
     <section className="sound-panel" aria-label="Audio source and sound controls">
       <div className="section-title">Audio source</div>
       <div className="sound-source">{url ? <a href={url} target="_blank" rel="noreferrer">{label} ↗</a> : label}</div>
+      <div className="muted small">{playing ? 'Playing' : 'Paused'} · {formatTime(position)} / {formatTime(duration)}</div>
       {remoteDevice && <button className="btn small sound-refresh" onClick={onRefresh}>Check phone now</button>}
-      {slider('volume', 'Volume', 0, 100, !remoteDevice && !spotify && !youtube && !directAudio)}
-      {slider('bass', 'Bass', -12, 12, !directAudio)}
-      {slider('treble', 'Treble', -12, 12, !directAudio)}
-      {slider('vocals', 'Vocal reduction', 0, 100, !directAudio)}
-      <p className="muted small">Vocal reduction uses stereo center cancellation. It works on direct audio only and may also remove centered instruments.</p>
+      <label className="sound-row">
+        <span>Volume</span>
+        <input type="range" min={0} max={100} value={volume}
+          onChange={(event) => onVolumeChange(Number(event.target.value))}
+          disabled={!remoteDevice && !spotify && !youtube && !directAudio} />
+        <output>{volume}%</output>
+      </label>
     </section>
   )
 }

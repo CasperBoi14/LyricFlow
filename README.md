@@ -9,6 +9,14 @@ through Spotify when an account is connected (Premium required), with the
 YouTube IFrame player as the fallback when Spotify cannot play a track.
 Microphone recognition uses AudD, and lyrics come from LRCLIB.
 
+Search has separate Songs and Artists modes. Artist profiles use iTunes artist
+IDs for song lists and a Wikipedia photo when available. The Settings tab has
+volume, word timing, lyric text size, and automatic full-screen controls.
+Spotify Connect playback is checked every three seconds while the browser runs;
+mobile browsers may suspend JavaScript while another app is in front, so the
+page refreshes playback immediately when it becomes visible again. Spotify
+429 responses pause requests until the rate limit cooldown has passed.
+
 ## Spotify setup
 
 Spotify is connected from the app with **Connect Spotify**. The server owns the

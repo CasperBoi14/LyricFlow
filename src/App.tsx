@@ -12,8 +12,8 @@ import { findAudioSource, isPreviewAudioUrl } from './lib/audio'
 import { hasBackend } from './lib/api'
 import { resolveToTrack } from './lib/lrclib'
 import { useAudioEngine } from './lib/useAudioEngine'
-import { type SoundSettings } from './lib/audioEffects'
 import { SoundPanel } from './components/SoundPanel'
+import { SettingsView } from './components/SettingsView'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
 import { beginSpotifyLogin, completeSpotifyLogin, findSpotifyTrack, hasSpotifyAuth, hasSpotifyPlayback, spotifyFetch, type SpotifyActivePlayback } from './lib/spotify'
 import { canUseSpotifyPlayback, getSpotifyDeviceId, isSpotifyUriBlocked, resetSpotifyPlayer, subscribeSpotifyTrackChanges } from './lib/spotifyPlayer'
@@ -57,6 +57,7 @@ const VIEW_META: Record<AppView, { title: string; subtitle: string }> = {
   search: { title: 'Search', subtitle: '' },
   identify: { title: 'Identify', subtitle: 'Live microphone recognition and lyric health' },
   library: { title: 'Library', subtitle: 'Your playlists and Spotify' },
+  settings: { title: 'Settings', subtitle: 'Playback and lyrics' },
 }
 
 function SearchIcon() {
@@ -81,6 +82,16 @@ function LibraryIcon() {
   return (
     <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
       <path d="M4 6.5h16M4 12h16M4 17.5h10" />
+    </svg>
+  )
+}
+
+function SettingsIcon() {
+  return (
+    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4" />
+      <circle cx="12" cy="12" r="7.5" />
     </svg>
   )
 }
@@ -122,7 +133,12 @@ export default function App() {
   const [connectingSpotify, setConnectingSpotify] = useState(false)
   const [remotePlayback, setRemotePlayback] = useState<RemotePlayback | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
-  const [sound, setSound] = useState<SoundSettings>({ volume: 100, bass: 0, treble: 0, vocals: 0 })
+  const [volume, setVolume] = useState(100)
+  const [lyricSize, setLyricSize] = useState(() => {
+    const saved = Number(localStorage.getItem('lf-lyric-size') || 100)
+    return Number.isFinite(saved) ? Math.max(80, Math.min(160, saved)) : 100
+  })
+  const [autoFullscreen, setAutoFullscreen] = useState(() => localStorage.getItem('lf-auto-fullscreen') !== 'false')
   const [playbackSource, setPlaybackSource] = useState('')
   const remoteVolumeTimer = useRef(0)
   useEffect(() => () => window.clearTimeout(remoteVolumeTimer.current), [])
@@ -146,7 +162,7 @@ export default function App() {
     spotifyReady,
     externalPlayback: !!remotePlayback,
     holdPlayback: !!pendingSpotify && pendingSpotify === selectedId && !selected?.spotifyUri,
-    sound,
+    volume,
     onSource: setPlaybackSource,
     onTime: (value) => { if (!remoteRef.current) setTime(value) },
     onPlayingChange: (value) => { if (!remoteRef.current) setPlaying(value) },
@@ -226,13 +242,7 @@ export default function App() {
       setAd(null)
       setPlaybackNotice(null)
     }
-    const expected = previous && previous.uri === playback.uri && previous.playing
-      ? previous.position + (performance.now() - previous.at) / 1000
-      : playback.position
-    const drift = playback.position - expected
-    const position = previous?.uri === playback.uri && playback.playing && Math.abs(drift) < 1.5
-      ? expected + drift * 0.35
-      : playback.position
+    const position = playback.position
     const next: RemotePlayback = { ...playback, position, trackId, at: performance.now() }
     remoteRef.current = next
     setRemotePlayback(next)
@@ -366,13 +376,13 @@ export default function App() {
       pendingRef.current = null
       seek(startAt)
       setPlaying(true)
-      setFullscreen(true)
+      if (autoFullscreen) setFullscreen(true)
       return
     }
     pendingRef.current = { startAt, play: true }
     setTime(0)
     setSelectedId(t.id)
-    setFullscreen(true)
+    if (autoFullscreen) setFullscreen(true)
   }
 
   const currentIndex = catalog.findIndex((t) => t.id === selectedId)
@@ -453,9 +463,9 @@ export default function App() {
 
   const playbackDuration = audioDuration || selected?.duration || 0
 
-  const updateSound = (key: keyof SoundSettings, value: number) => {
-    setSound((current) => ({ ...current, [key]: value }))
-    if (key === 'volume' && remoteRef.current?.deviceId) {
+  const updateVolume = (value: number) => {
+    setVolume(value)
+    if (remoteRef.current?.deviceId) {
       window.clearTimeout(remoteVolumeTimer.current)
       const deviceId = remoteRef.current.deviceId
       remoteVolumeTimer.current = window.setTimeout(() => {
@@ -464,6 +474,19 @@ export default function App() {
       }, 400)
     }
   }
+
+  const updateLyricSize = (value: number) => {
+    setLyricSize(value)
+    localStorage.setItem('lf-lyric-size', String(value))
+  }
+  const updateAutoFullscreen = (value: boolean) => {
+    setAutoFullscreen(value)
+    localStorage.setItem('lf-auto-fullscreen', String(value))
+  }
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--lyrics-scale', String(lyricSize / 100))
+  }, [lyricSize])
 
   const togglePlayback = () => {
     const remote = remoteRef.current
@@ -518,6 +541,10 @@ export default function App() {
               <LibraryIcon />
               <span>Library</span>
             </button>
+            <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>
+              <SettingsIcon />
+              <span>Settings</span>
+            </button>
           </nav>
 
           <div className="sidebar-foot">
@@ -550,6 +577,10 @@ export default function App() {
               <IdentifyView live={live} currentTrack={selected} health={liveHealth} onOpen={openTrack} />
             ) : view === 'search' ? (
               <SearchView onOpen={openTrack} recentTracks={recentIds.map((id) => catalog.find((track) => track.id === id)).filter((track): track is Track => !!track)} />
+            ) : view === 'settings' ? (
+              <SettingsView volume={volume} onVolumeChange={updateVolume} delayMs={delayMs} onDelayChange={updateDelay}
+                lyricSize={lyricSize} onLyricSizeChange={updateLyricSize}
+                autoFullscreen={autoFullscreen} onAutoFullscreenChange={updateAutoFullscreen} />
             ) : (
               <LibraryView
                 playlists={playlists}
@@ -571,7 +602,7 @@ export default function App() {
         </main>
 
         <aside className="panel rightbar">
-          {syncError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{syncError} <button className="link" onClick={() => void connectSpotify()}>Reconnect</button></div>}
+          {syncError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{syncError} {!syncError.startsWith('Spotify is limiting') && <button className="link" onClick={() => void connectSpotify()}>Reconnect</button>}</div>}
           {audioError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{audioError}</div>}
           {playbackNotice && <div className="notice" style={{ margin: '4px 10px 0' }}>{playbackNotice}</div>}
           {!hasBackend && selected && !selected.youtubeId && !selected.spotifyUri && (
@@ -581,7 +612,8 @@ export default function App() {
           )}
           {!hasBackend && <ProviderSetup onSaved={onProvidersSaved} />}
           <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
-          <SoundPanel source={playbackSource} track={selected} remoteDevice={remotePlayback?.deviceName} remoteDeviceType={remotePlayback?.deviceType} sound={sound} onChange={updateSound} onRefresh={refreshSpotifyPlayback} />
+          <SoundPanel source={playbackSource} track={selected} remoteDevice={remotePlayback?.deviceName} remoteDeviceType={remotePlayback?.deviceType}
+            volume={volume} position={time} duration={playbackDuration} playing={playing} onVolumeChange={updateVolume} onRefresh={refreshSpotifyPlayback} />
         </aside>
       </div>
 
