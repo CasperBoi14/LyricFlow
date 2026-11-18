@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import './App.css'
 import { LyricsView } from './components/LyricsView'
 import { IdentifyView } from './components/IdentifyView'
@@ -14,8 +14,16 @@ import { resolveToTrack } from './lib/lrclib'
 import { useAudioEngine } from './lib/useAudioEngine'
 import { SoundPanel } from './components/SoundPanel'
 import { SettingsView } from './components/SettingsView'
+import { MusicDashboard } from './components/MusicDashboard'
+import { MusicTimeline } from './components/MusicTimeline'
+import { clearListeningHistory, loadListeningHistory, observeListening, saveListeningHistory, type HistoryEntry } from './lib/listeningHistory'
+import { DEFAULT_VISUAL_SETTINGS, loadVisualPresets, loadVisualSettings, saveVisualPresets, saveVisualSettings, type VisualPreset } from './lib/visualSettings'
+import { useAtmosphere } from './lib/useAtmosphere'
+import { FloatingLyricsWidget } from './components/FloatingLyricsWidget'
+import { AmbientScreensaver } from './components/AmbientScreensaver'
+import { SongInsights } from './components/SongInsights'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
-import { beginSpotifyLogin, completeSpotifyLogin, findSpotifyTrack, hasSpotifyAuth, hasSpotifyPlayback, spotifyFetch, type SpotifyActivePlayback } from './lib/spotify'
+import { beginSpotifyLogin, completeSpotifyLogin, disconnectSpotify, findSpotifyTrack, hasSpotifyAuth, setSpotifyClientId, spotifyFetch, type SpotifyActivePlayback } from './lib/spotify'
 import { canUseSpotifyPlayback, getSpotifyDeviceId, isSpotifyUriBlocked, resetSpotifyPlayer, subscribeSpotifyTrackChanges } from './lib/spotifyPlayer'
 import { useSpotifyFollow } from './lib/useSpotifyFollow'
 import {
@@ -58,6 +66,8 @@ const VIEW_META: Record<AppView, { title: string; subtitle: string }> = {
   identify: { title: 'Identify', subtitle: 'Live microphone recognition and lyric health' },
   library: { title: 'Library', subtitle: 'Your playlists and Spotify' },
   settings: { title: 'Settings', subtitle: 'Playback and lyrics' },
+  dna: { title: 'Music DNA', subtitle: 'Your listening in this browser' },
+  timeline: { title: 'Timeline', subtitle: 'A private record of songs you played here' },
 }
 
 function SearchIcon() {
@@ -139,12 +149,21 @@ export default function App() {
     return Number.isFinite(saved) ? Math.max(80, Math.min(160, saved)) : 100
   })
   const [autoFullscreen, setAutoFullscreen] = useState(() => localStorage.getItem('lf-auto-fullscreen') !== 'false')
+  const [spotifySyncMs, setSpotifySyncMs] = useState(() => {
+    const saved = Number(localStorage.getItem('lf-spotify-sync-ms') || 12_000)
+    return Number.isFinite(saved) ? Math.max(3_000, Math.min(30_000, saved)) : 12_000
+  })
   const [playbackSource, setPlaybackSource] = useState('')
+  const [visual, setVisual] = useState(loadVisualSettings)
+  const [presets, setPresets] = useState(loadVisualPresets)
+  const [history, setHistory] = useState(loadListeningHistory)
+  const [screensaver, setScreensaver] = useState(false)
   const remoteVolumeTimer = useRef(0)
   useEffect(() => () => window.clearTimeout(remoteVolumeTimer.current), [])
   const live = useLiveIdentify()
 
   const selected = useMemo<Track | null>(() => catalog.find((t) => t.id === selectedId) ?? null, [catalog, selectedId])
+  const atmosphere = useAtmosphere(selected?.cover)
   const pendingRef = useRef<{ startAt: number; play: boolean } | null>(null)
   const catalogRef = useRef(catalog)
   const spotifyTriedRef = useRef<Set<string>>(new Set())
@@ -195,8 +214,39 @@ export default function App() {
   useEffect(() => { savePlaylists(playlists) }, [playlists])
   useEffect(() => { saveSavedTracks(catalog) }, [catalog])
   useEffect(() => { saveRecentTrackIds(recentIds) }, [recentIds])
+  useEffect(() => { saveVisualSettings(visual) }, [visual])
+  useEffect(() => { saveVisualPresets(presets) }, [presets])
+  useEffect(() => { saveListeningHistory(history) }, [history])
 
-  const refreshSpotifyPlayback = useSpotifyFollow(spotifyReady, (playback) => {
+  useEffect(() => {
+    if (!visual.screensaverMinutes || !selectedId || fullscreen) return
+    let timer = 0
+    const reset = () => {
+      setScreensaver(false)
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => setScreensaver(true), visual.screensaverMinutes * 60_000)
+    }
+    const events = ['pointermove', 'keydown', 'touchstart', 'click'] as const
+    events.forEach((event) => window.addEventListener(event, reset, { passive: true }))
+    timer = window.setTimeout(() => setScreensaver(true), visual.screensaverMinutes * 60_000)
+    return () => { window.clearTimeout(timer); events.forEach((event) => window.removeEventListener(event, reset)) }
+  }, [visual.screensaverMinutes, selectedId, fullscreen])
+
+  useEffect(() => {
+    if (!selectedId || !playing) return
+    const track = catalogRef.current.find((item) => item.id === selectedId)
+    if (!track) return
+    let last = performance.now()
+    const timer = window.setInterval(() => {
+      const now = performance.now()
+      const elapsed = Math.min(6, Math.max(0, (now - last) / 1000))
+      last = now
+      if (elapsed > 0) setHistory((entries) => observeListening(entries, track, elapsed, Date.now()))
+    }, 5_000)
+    return () => window.clearInterval(timer)
+  }, [selectedId, playing])
+
+  const refreshSpotifyPlayback = useSpotifyFollow(spotifyReady, spotifySyncMs, (playback) => {
     if (!playback) {
       ignoredRemoteUriRef.current = null
       if (remoteRef.current) {
@@ -283,12 +333,12 @@ export default function App() {
         spotifyTriedRef.current.clear()
         setSpotifyReady(true)
         setSpotifyError(null)
-        setView('library')
+        setView('settings')
       })
       .catch((e: any) => {
         setSpotifyError(e?.message || 'Spotify login failed.')
         setSpotifyReady(hasSpotifyAuth())
-        setView('library')
+        setView('settings')
       })
   }, [])
 
@@ -427,15 +477,16 @@ export default function App() {
     localStorage.setItem(DELAY_KEY, String(next))
   }
 
-  const connectSpotify = async () => {
+  const connectSpotify = async (clientId?: string) => {
     setSpotifyError(null)
     setConnectingSpotify(true)
     try {
+      if (clientId !== undefined) setSpotifyClientId(clientId)
       await beginSpotifyLogin()
     } catch (e: any) {
       setSpotifyError(e?.message || 'Could not connect to Spotify.')
       setConnectingSpotify(false)
-      setView('library')
+      setView('settings')
     }
   }
 
@@ -446,6 +497,12 @@ export default function App() {
     remoteRef.current = null
     setRemotePlayback(null)
     setSyncError(null)
+  }
+
+  const disconnectSpotifyAccount = () => {
+    resetSpotifyPlayer()
+    disconnectSpotify()
+    onSpotifyReadyChange(false)
   }
 
   const onCreatePlaylist = (name: string) => {
@@ -483,10 +540,37 @@ export default function App() {
     setAutoFullscreen(value)
     localStorage.setItem('lf-auto-fullscreen', String(value))
   }
+  const updateSpotifySync = (value: number) => {
+    setSpotifySyncMs(value)
+    localStorage.setItem('lf-spotify-sync-ms', String(value))
+  }
+  const updateVisual = (patch: Partial<typeof visual>) => setVisual((current) => ({ ...current, ...patch }))
+  const savePreset = (name: string) => setPresets((items) => [...items.filter((item) => item.name.toLowerCase() !== name.toLowerCase()), { name, settings: visual }].slice(-12))
+  const applyPreset = (preset: VisualPreset) => setVisual(preset.settings)
+  const deletePreset = (name: string) => setPresets((items) => items.filter((item) => item.name !== name))
+  const resetVisual = () => setVisual(DEFAULT_VISUAL_SETTINGS)
+  const clearHistory = () => { clearListeningHistory(); setHistory([]) }
+
+  const openHistory = async (entry: HistoryEntry) => {
+    try {
+      const track = await resolveToTrack({ id: entry.trackId, title: entry.title, artist: entry.artist,
+        album: entry.album, cover: entry.cover, source: entry.source, spotifyUri: entry.spotifyUri,
+        youtubeId: entry.youtubeId, externalUrl: entry.externalUrl })
+      openTrack(track)
+    } catch { setPlaybackNotice('Could not reopen this song right now.') }
+  }
 
   useEffect(() => {
     document.documentElement.style.setProperty('--lyrics-scale', String(lyricSize / 100))
   }, [lyricSize])
+
+  const appStyle = {
+    '--atmo-a': atmosphere.primary,
+    '--atmo-b': atmosphere.secondary,
+    '--theme-blur': `${visual.blur}px`,
+    '--theme-opacity': String(visual.transparency / 100),
+    '--artwork-image': selected?.cover?.startsWith('http') ? `url(${JSON.stringify(selected.cover)})` : 'none',
+  } as CSSProperties
 
   const togglePlayback = () => {
     const remote = remoteRef.current
@@ -525,7 +609,7 @@ export default function App() {
   const meta = VIEW_META[view]
 
   return (
-    <div className="app">
+    <div className={`app theme-${visual.background} font-${visual.font} align-${visual.align} position-${visual.position} highlight-${visual.highlight}${visual.animations ? '' : ' no-motion'}`} style={appStyle}>
       <div className="shell">
         <aside className="panel sidebar">
           <nav className="nav" aria-label="Main">
@@ -540,6 +624,12 @@ export default function App() {
             <button className={view === 'library' ? 'active' : ''} onClick={() => setView('library')}>
               <LibraryIcon />
               <span>Library</span>
+            </button>
+            <button className={view === 'dna' ? 'active' : ''} onClick={() => setView('dna')}>
+              <span className="nav-icon" aria-hidden="true">◉</span><span>Music DNA</span>
+            </button>
+            <button className={view === 'timeline' ? 'active' : ''} onClick={() => setView('timeline')}>
+              <span className="nav-icon" aria-hidden="true">◷</span><span>Timeline</span>
             </button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>
               <SettingsIcon />
@@ -558,18 +648,7 @@ export default function App() {
               <h1>{meta.title}</h1>
               {meta.subtitle && <div className="muted small">{meta.subtitle}</div>}
             </div>
-            {!spotifyReady ? (
-              <button className="btn spotify-btn" onClick={() => void connectSpotify()} disabled={connectingSpotify}>
-                <span className="spotify-dot" aria-hidden="true" />
-                {connectingSpotify ? 'Opening Spotify…' : 'Connect Spotify'}
-              </button>
-            ) : !hasSpotifyPlayback() ? (
-              <button className="btn spotify-btn" onClick={() => void connectSpotify()} disabled={connectingSpotify}>
-                {connectingSpotify ? 'Opening Spotify…' : 'Reconnect Spotify for playback'}
-              </button>
-            ) : (
-              <span className="spotify-chip"><span className="spotify-dot" aria-hidden="true" />{remotePlayback ? `Following ${remotePlayback.deviceName}` : 'Spotify connected'}</span>
-            )}
+            {spotifyReady && <span className="spotify-chip"><span className="spotify-dot" aria-hidden="true" />{remotePlayback ? `Following ${remotePlayback.deviceName}` : 'Spotify connected'}</span>}
           </div>
           <div className="main-body">
             <div className="view-enter" key={view}>
@@ -580,7 +659,17 @@ export default function App() {
             ) : view === 'settings' ? (
               <SettingsView volume={volume} onVolumeChange={updateVolume} delayMs={delayMs} onDelayChange={updateDelay}
                 lyricSize={lyricSize} onLyricSizeChange={updateLyricSize}
-                autoFullscreen={autoFullscreen} onAutoFullscreenChange={updateAutoFullscreen} />
+                autoFullscreen={autoFullscreen} onAutoFullscreenChange={updateAutoFullscreen}
+                spotifyConnected={spotifyReady} spotifyConnecting={connectingSpotify} spotifyError={spotifyError}
+                spotifyDeviceName={remotePlayback?.deviceName} onSpotifyConnect={(id) => void connectSpotify(id)}
+                onSpotifyDisconnect={disconnectSpotifyAccount} onDismissSpotifyError={() => setSpotifyError(null)}
+                spotifySyncMs={spotifySyncMs} onSpotifySyncChange={updateSpotifySync}
+                visual={visual} presets={presets} onVisualChange={updateVisual} onSavePreset={savePreset}
+                onApplyPreset={applyPreset} onDeletePreset={deletePreset} onResetVisual={resetVisual} onClearHistory={clearHistory} />
+            ) : view === 'dna' ? (
+              <MusicDashboard history={history} onOpen={(entry) => void openHistory(entry)} />
+            ) : view === 'timeline' ? (
+              <MusicTimeline history={history} onOpen={(entry) => void openHistory(entry)} />
             ) : (
               <LibraryView
                 playlists={playlists}
@@ -595,6 +684,7 @@ export default function App() {
                 onSpotifyReadyChange={onSpotifyReadyChange}
                 spotifyError={spotifyError}
                 onDismissSpotifyError={() => setSpotifyError(null)}
+                onOpenSettings={() => setView('settings')}
               />
             )}
             </div>
@@ -602,7 +692,7 @@ export default function App() {
         </main>
 
         <aside className="panel rightbar">
-          {syncError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{syncError} {!syncError.startsWith('Spotify returned 429') && <button className="link" onClick={() => void connectSpotify()}>Reconnect</button>}</div>}
+          {syncError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{syncError} {!syncError.startsWith('Spotify returned 429') && <button className="link" onClick={() => setView('settings')}>Connection settings</button>}</div>}
           {audioError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{audioError}</div>}
           {playbackNotice && <div className="notice" style={{ margin: '4px 10px 0' }}>{playbackNotice}</div>}
           {!hasBackend && selected && !selected.youtubeId && !selected.spotifyUri && (
@@ -614,12 +704,13 @@ export default function App() {
           <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
           <SoundPanel source={playbackSource} track={selected} remoteDevice={remotePlayback?.deviceName} remoteDeviceType={remotePlayback?.deviceType}
             volume={volume} position={time} duration={playbackDuration} playing={playing} onVolumeChange={updateVolume} onRefresh={refreshSpotifyPlayback} />
+          <SongInsights track={selected} />
         </aside>
       </div>
 
       <footer className="panel player">
         <div className="now-playing">
-          <div className="mini-cover" style={{ background: selected?.cover?.startsWith('http') ? `url(${selected.cover}) center/cover` : (selected?.cover || 'var(--panel-2)') }} />
+          <div className="mini-cover" key={selected?.id || 'empty'} style={{ background: selected?.cover?.startsWith('http') ? `url(${selected.cover}) center/cover` : (selected?.cover || 'var(--panel-2)') }} />
           <div className="np-meta">
             <div className="t">{selected?.title ?? 'Nothing playing'}</div>
             <div className="a">{selected ? `${selected.artist} • ${selected.album}` : 'Search a song to start'}</div>
@@ -651,6 +742,12 @@ export default function App() {
           <button className="btn" onClick={() => setFullscreen(true)}>Fullscreen</button>
         </div>
       </footer>
+
+      {visual.widget && selected && !fullscreen && !screensaver && <FloatingLyricsWidget track={selected} time={time} delayMs={delayMs}
+        playing={playing} position={visual.widgetPosition} onTogglePlay={togglePlayback} onNext={next} onPrevious={prev}
+        onOpenFull={() => setFullscreen(true)} onClose={() => updateVisual({ widget: false })} />}
+
+      {screensaver && visual.screensaverMinutes > 0 && selected && !fullscreen && <AmbientScreensaver track={selected} time={time} delayMs={delayMs} onExit={() => setScreensaver(false)} />}
 
       {fullscreen && selected && (
         <FullscreenLyrics

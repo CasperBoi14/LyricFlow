@@ -3,24 +3,14 @@ import type { Track } from '../types'
 import type { Playlist } from '../lib/playlists'
 import { resolveToTrack } from '../lib/lrclib'
 import {
-  beginSpotifyLogin,
-  disconnectSpotify,
-  getSpotifyClientId,
-  getSpotifyMe,
   loadSpotifyPlaylistCache,
-  getSpotifyServerConfig,
   getSpotifyPlaylistTracks,
   getSpotifyPlaylists,
   hasSpotifyAuth,
-  hasSpotifyPlayback,
-  setSpotifyClientId,
   SpotifyApiError,
-  spotifyRedirectTarget,
   type SpotifyPlaylist,
-  type SpotifyProfile,
   type SpotifyTrack,
 } from '../lib/spotify'
-import { resetSpotifyPlayer } from '../lib/spotifyPlayer'
 
 type Props = {
   playlists: Playlist[]
@@ -35,6 +25,7 @@ type Props = {
   onSpotifyReadyChange: (ready: boolean) => void
   spotifyError: string | null
   onDismissSpotifyError: () => void
+  onOpenSettings: () => void
 }
 
 export function LibraryView(props: Props) {
@@ -132,6 +123,7 @@ export function LibraryView(props: Props) {
           error={props.spotifyError}
           onDismissError={props.onDismissSpotifyError}
           onOpen={props.onOpen}
+          onOpenSettings={props.onOpenSettings}
         />
       )}
     </div>
@@ -144,18 +136,19 @@ type SpotifyPaneProps = {
   error: string | null
   onDismissError: () => void
   onOpen: (t: Track) => void
+  onOpenSettings: () => void
 }
 
-function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: SpotifyPaneProps) {
-  const [clientId, setClientId] = useState(() => getSpotifyClientId())
-  const [serverConfigured, setServerConfigured] = useState(false)
-  const [connecting, setConnecting] = useState(false)
+function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen, onOpenSettings }: SpotifyPaneProps) {
   const [localError, setLocalError] = useState<string | null>(null)
-  const [profile, setProfile] = useState<SpotifyProfile | null>(null)
+  const [errorScope, setErrorScope] = useState<'playlists' | 'tracks' | null>(null)
   const [cachedPage] = useState(loadSpotifyPlaylistCache)
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>(() => cachedPage?.items || [])
   const [loadingPlaylists, setLoadingPlaylists] = useState(ready && !cachedPage)
   const [reloadPlaylists, setReloadPlaylists] = useState(0)
+  const [retryAt, setRetryAt] = useState<number | null>(null)
+  const [clock, setClock] = useState(Date.now)
+  const failuresRef = useRef(0)
   const [nextPlaylistOffset, setNextPlaylistOffset] = useState<number | null>(cachedPage?.next ? cachedPage.items.length : null)
   const [loadingMorePlaylists, setLoadingMorePlaylists] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -169,49 +162,47 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
   useEffect(() => {
     if (!ready) return
     let cancelled = false
-    getSpotifyPlaylists()
+    let retryTimer = 0
+    getSpotifyPlaylists(0, reloadPlaylists > 0)
       .then((list) => {
         if (cancelled) return
+        failuresRef.current = 0
+        setRetryAt(null)
         setPlaylists(list.items || [])
         setNextPlaylistOffset(list.next ? (list.items || []).length : null)
         setLocalError(null)
-        void getSpotifyMe().then((me) => {
-          if (!cancelled) setProfile(me)
-        }).catch(() => { /* profile is optional for browsing playlists */ })
+        setErrorScope(null)
       })
       .catch((e: any) => {
         if (cancelled) return
+        const limited = e instanceof SpotifyApiError && e.status === 429
+        if (limited) {
+          failuresRef.current += 1
+          const delay = e.retryAt
+            ? Math.max(1_000, e.retryAt - Date.now() + 1_000)
+            : Math.min(5 * 60_000, 30_000 * 2 ** (failuresRef.current - 1))
+          setRetryAt(Date.now() + delay)
+          retryTimer = window.setTimeout(() => setReloadPlaylists((count) => count + 1), delay)
+        } else setRetryAt(null)
         setLocalError(e instanceof SpotifyApiError && e.status === 403
           ? 'Spotify denied access (403). In your Spotify Developer app, add this account under Users Management, use Premium, then reconnect to grant playlist access.'
-          : e?.message || 'Could not load Spotify.')
+          : limited ? 'Spotify is temporarily limiting playlist requests. Saved playlists remain available; LyricFlow will retry automatically.'
+            : e?.message || 'Could not load Spotify.')
+        setErrorScope('playlists')
         if (!hasSpotifyAuth()) onReadyChange(false)
       })
       .finally(() => { if (!cancelled) setLoadingPlaylists(false) })
-    return () => { cancelled = true }
+    return () => { cancelled = true; window.clearTimeout(retryTimer) }
   }, [ready, onReadyChange, reloadPlaylists])
 
   const loading = ready && loadingPlaylists && !localError && playlists.length === 0
-  const retryPlaylists = () => { setLoadingPlaylists(true); setReloadPlaylists((count) => count + 1) }
+  const retryPlaylists = () => { setLoadingPlaylists(true); setRetryAt(null); setReloadPlaylists((count) => count + 1) }
 
   useEffect(() => {
-    let cancelled = false
-    getSpotifyServerConfig()
-      .then((config) => { if (!cancelled) setServerConfigured(!!config?.configured) })
-      .catch(() => { /* ignore */ })
-    return () => { cancelled = true }
-  }, [])
-
-  const connect = async () => {
-    setLocalError(null)
-    setConnecting(true)
-    try {
-      if (!serverConfigured) setSpotifyClientId(clientId)
-      await beginSpotifyLogin()
-    } catch (e: any) {
-      setLocalError(e?.message || 'Could not start Spotify login.')
-      setConnecting(false)
-    }
-  }
+    if (!retryAt) return
+    const timer = window.setInterval(() => setClock(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
+  }, [retryAt])
 
   const openPlaylist = async (playlist: SpotifyPlaylist) => {
     const request = ++requestRef.current
@@ -220,16 +211,19 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
     setTracks([])
     setNextTrackOffset(null)
     setLocalError(null)
+    setErrorScope(null)
     try {
       const data = await getSpotifyPlaylistTracks(playlist.id)
       if (request !== requestRef.current) return
       setTracks(data.tracks)
       setNextTrackOffset(data.nextOffset)
+      if (data.cached) { setLocalError('Showing saved songs while Spotify is rate limiting requests.'); setErrorScope('tracks') }
     } catch (e: any) {
       if (request !== requestRef.current) return
       setLocalError(e instanceof SpotifyApiError && e.status === 403
         ? 'Spotify denied this playlist (403). Spotify currently allows in-app items from playlists you own or collaborate on. Open a followed playlist in Spotify instead.'
         : e?.message || 'Could not load playlist tracks.')
+      setErrorScope('tracks')
     } finally {
       if (request === requestRef.current) setLoadingTracks(false)
     }
@@ -244,6 +238,7 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
       setNextPlaylistOffset(page.next ? nextPlaylistOffset + (page.items || []).length : null)
     } catch (e: any) {
       setLocalError(e?.message || 'Could not load more playlists.')
+      setErrorScope('playlists')
     } finally { setLoadingMorePlaylists(false) }
   }
 
@@ -257,7 +252,7 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
       setTracks((current) => [...current, ...data.tracks])
       setNextTrackOffset(data.nextOffset)
     } catch (e: any) {
-      if (request === requestRef.current) setLocalError(e?.message || 'Could not load more tracks.')
+      if (request === requestRef.current) { setLocalError(e?.message || 'Could not load more tracks.'); setErrorScope('tracks') }
     } finally {
       if (request === requestRef.current) setLoadingMoreTracks(false)
     }
@@ -282,6 +277,7 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
       onOpen(track)
     } catch (e: any) {
       setLocalError(e?.message || 'Could not load lyrics.')
+      setErrorScope('tracks')
     } finally {
       setOpeningTrack(null)
     }
@@ -290,37 +286,9 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
   if (!ready) {
     return (
       <div className="spotify-setup">
-        <h3>Connect Spotify</h3>
-        <p className="muted">
-          {serverConfigured
-            ? 'Sign in with Spotify to load your playlists and play music through the in-app player. Playback needs Spotify Premium.'
-            : 'Create an app in the Spotify developer dashboard, add the redirect URI below exactly as shown, then paste its Client ID. No secret is needed.'}
-        </p>
-        <div className="redirect-box">
-          <span className="muted small">Redirect URI</span>
-          <code>{spotifyRedirectTarget()}</code>
-          <span className="muted small">Must match the dashboard character for character, including the trailing slash. Spotify requires HTTPS, or 127.0.0.1 for local development.</span>
-        </div>
-        {serverConfigured ? (
-          <button className="btn primary spotify-connect" onClick={() => void connect()} disabled={connecting}>
-            <span className="spotify-dot" aria-hidden="true" />
-            {connecting ? 'Opening Spotify…' : 'Connect Spotify'}
-          </button>
-        ) : (
-          <div className="create-row">
-            <input
-              className="search"
-              placeholder="Spotify Client ID"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            />
-            <button className="btn primary" onClick={() => void connect()} disabled={connecting || !clientId.trim()}>
-              {connecting ? 'Connecting…' : 'Connect Spotify'}
-            </button>
-          </div>
-        )}
-        <a className="link" href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">Open Spotify dashboard</a>
-        {(localError || error) && <div className="notice error">{localError || error}</div>}
+        <h3>Spotify playlists</h3>
+        <p className="muted">Connect your Spotify account in Settings to browse its playlists here.</p>
+        <button className="btn primary" onClick={onOpenSettings}>Open Spotify settings</button>
       </div>
     )
   }
@@ -328,41 +296,16 @@ function SpotifyPane({ ready, onReadyChange, error, onDismissError, onOpen }: Sp
   return (
     <div className="spotify-pane">
       <div className="spotify-head">
-        <div className="spotify-profile">
-          {profile?.images?.[0]?.url ? <img src={profile.images[0].url} alt="" /> : <div className="avatar-blank" />}
-          <div>
-            <div className="row-title">{profile?.display_name || 'Spotify connected'}</div>
-            <div className="muted small">
-              {profile?.product === 'premium' ? 'Premium' : 'Spotify'} · {hasSpotifyPlayback() ? 'in-app playback' : 'playlists only'}
-            </div>
-          </div>
-        </div>
-        <div className="row">
-          {(!hasSpotifyPlayback() || localError) && (
-            <button className="btn small" onClick={() => void beginSpotifyLogin().catch((e: any) => setLocalError(e?.message || 'Reconnect failed.'))}>
-              Reconnect Spotify
-            </button>
-          )}
-          <button
-            className="btn small ghost"
-            onClick={() => { resetSpotifyPlayer(); disconnectSpotify(); setProfile(null); setPlaylists([]); setTracks([]); setOpenId(null); onReadyChange(false) }}
-          >
-            Disconnect
-          </button>
-        </div>
+        <div><div className="row-title">Spotify playlists</div><div className="muted small">Browse your saved playlists</div></div>
+        <button className="btn small ghost" onClick={onOpenSettings}>Connection settings</button>
       </div>
 
       {(localError || error) && (
         <div className="notice error">
           {localError || error}
-          {localError && <button className="btn small" onClick={retryPlaylists} disabled={loadingPlaylists}>Retry playlists</button>}
+          {retryAt && <span className="muted small"> Retrying in {Math.max(0, Math.ceil((retryAt - clock) / 1000))}s.</span>}
+          {localError && errorScope === 'playlists' && <button className="btn small" onClick={retryPlaylists} disabled={loadingPlaylists || (!!retryAt && retryAt > clock)}>Retry playlists</button>}
           {!localError && error && <button className="link" onClick={onDismissError}>Dismiss</button>}
-        </div>
-      )}
-
-      {!hasSpotifyPlayback() && (
-        <div className="notice">
-          In-app playback needs Spotify Premium plus the streaming permission. Until you reconnect, songs play through YouTube instead.
         </div>
       )}
 

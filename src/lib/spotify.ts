@@ -64,9 +64,15 @@ export class SpotifyApiError extends Error {
 const CLIENT_KEY = 'lf-spotify-client'
 const TOKEN_KEY = 'lf-spotify-token'
 const PLAYLIST_CACHE_KEY = 'lf-spotify-playlists-cache'
+const TRACK_CACHE_KEY = 'lf-spotify-tracks-cache'
 const VERIFIER_KEY = 'lf-spotify-verifier'
 const STATE_KEY = 'lf-spotify-state'
 const SCOPE = 'playlist-read-private playlist-read-collaborative user-read-private user-read-email user-read-playback-state user-modify-playback-state streaming'
+type SpotifyPlaylistPage = { items: SpotifyPlaylist[]; next: string | null }
+let recentPlaylistPage: SpotifyPlaylistPage | null = null
+let recentPlaylistAt = 0
+let playlistRequest: Promise<SpotifyPlaylistPage> | null = null
+let observedRetryAt = 0
 
 // Older releases stored an estimated cooldown and blocked requests before contacting Spotify.
 try {
@@ -168,8 +174,11 @@ export function hasSpotifyPlayback(): boolean {
 
 export function disconnectSpotify() {
   cachedTokens = null
+  recentPlaylistPage = null
+  recentPlaylistAt = 0
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(PLAYLIST_CACHE_KEY)
+  localStorage.removeItem(TRACK_CACHE_KEY)
 }
 
 export function loadSpotifyPlaylistCache(): { items: SpotifyPlaylist[]; next: string | null } | null {
@@ -185,7 +194,8 @@ function spotifyError(message: string, status: number, res?: Response): SpotifyA
     const header = res?.headers.get('Retry-After')
     const seconds = header === null || header === undefined ? NaN : Number(header)
     const parsed = Number.isFinite(seconds) && seconds >= 0 ? Date.now() + seconds * 1000 : header ? Date.parse(header) : NaN
-    const retryAt = Number.isFinite(parsed) && parsed > Date.now() ? parsed : null
+    const retryAt = Number.isFinite(parsed) && parsed > Date.now() ? parsed : Date.now() + 30_000
+    observedRetryAt = Math.max(observedRetryAt, retryAt)
     return new SpotifyApiError(retryAt
       ? `Spotify returned 429 Too Many Requests. Retry after ${new Date(retryAt).toLocaleString()}.`
       : 'Spotify returned 429 Too Many Requests. Please retry later.', status, retryAt)
@@ -280,6 +290,9 @@ export async function completeSpotifyLogin(): Promise<boolean> {
       scope: tokens.scope,
     })
     localStorage.removeItem(PLAYLIST_CACHE_KEY)
+    localStorage.removeItem(TRACK_CACHE_KEY)
+    recentPlaylistPage = null
+    recentPlaylistAt = 0
     return true
   } finally {
     clean()
@@ -319,6 +332,9 @@ async function getAccessToken(forceRefresh = false): Promise<string | null> {
 }
 
 async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  if (observedRetryAt > Date.now()) {
+    throw new SpotifyApiError(`Spotify is limiting requests. Retry after ${new Date(observedRetryAt).toLocaleString()}.`, 429, observedRetryAt)
+  }
   let token = await getAccessToken()
   if (!token) throw new Error('Connect Spotify to continue.')
   const send = (accessToken: string) => {
@@ -411,20 +427,44 @@ export async function findSpotifyTrack(title: string, artist: string): Promise<s
 }
 
 export const getSpotifyMe = () => api<SpotifyProfile>('/me')
-export async function getSpotifyPlaylists(offset = 0) {
-  const page = await api<{ items: SpotifyPlaylist[]; next: string | null }>(`/me/playlists?limit=50&offset=${offset}`)
-  if (offset === 0) {
+export async function getSpotifyPlaylists(offset = 0, force = false): Promise<SpotifyPlaylistPage> {
+  if (offset !== 0) return api(`/me/playlists?limit=50&offset=${offset}`)
+  if (!force && recentPlaylistPage && Date.now() - recentPlaylistAt < 60_000) return recentPlaylistPage
+  if (playlistRequest) return playlistRequest
+  const request = api<SpotifyPlaylistPage>('/me/playlists?limit=50&offset=0').then((page) => {
+    recentPlaylistPage = page
+    recentPlaylistAt = Date.now()
     try { localStorage.setItem(PLAYLIST_CACHE_KEY, JSON.stringify(page)) } catch { /* storage unavailable */ }
-  }
-  return page
+    return page
+  })
+  playlistRequest = request.finally(() => { playlistRequest = null })
+  return playlistRequest
 }
 export async function getSpotifyPlaylistTracks(id: string, offset = 0) {
-  const page = await api<{ items: { item?: SpotifyTrack | null; track?: SpotifyTrack | null }[]; next: string | null }>(
-    `/playlists/${encodeURIComponent(id)}/items?limit=50&offset=${offset}`,
-  )
-  return {
+  let page: { items: { item?: SpotifyTrack | null; track?: SpotifyTrack | null }[]; next: string | null }
+  try {
+    page = await api(`/playlists/${encodeURIComponent(id)}/items?limit=50&offset=${offset}`)
+  } catch (error) {
+    if (offset === 0 && error instanceof SpotifyApiError && error.status === 429) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(TRACK_CACHE_KEY) || '{}') as Record<string, { tracks: SpotifyTrack[]; nextOffset: number | null }>
+        if (Array.isArray(saved[id]?.tracks)) return { ...saved[id], cached: true }
+      } catch { /* ignore invalid cache */ }
+    }
+    throw error
+  }
+  const result = {
     tracks: (page.items || []).map((row) => row.item || row.track).filter((track): track is SpotifyTrack =>
       !!track && track.type !== 'episode' && !!track.name && !!track.uri?.startsWith('spotify:track:')),
     nextOffset: page.next ? offset + page.items.length : null,
+    cached: false,
   }
+  if (offset === 0) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TRACK_CACHE_KEY) || '{}') as Record<string, typeof result>
+      const entries = Object.entries(saved).filter(([key]) => key !== id).slice(-7)
+      localStorage.setItem(TRACK_CACHE_KEY, JSON.stringify(Object.fromEntries([...entries, [id, result]])))
+    } catch { /* storage unavailable */ }
+  }
+  return result
 }

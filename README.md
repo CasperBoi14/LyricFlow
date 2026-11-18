@@ -10,17 +10,26 @@ YouTube IFrame player as the fallback when Spotify cannot play a track.
 Microphone recognition uses AudD, and lyrics come from LRCLIB.
 
 Search has separate Songs and Artists modes. Artist profiles use iTunes artist
-IDs for song lists and a Wikipedia photo when available. The Settings tab has
-volume, word timing, lyric text size, and automatic full-screen controls.
-Active Spotify Connect playback is checked every three seconds while the page is visible;
-mobile browsers may suspend JavaScript while another app is in front, so the
-page refreshes playback immediately when it becomes visible again. Spotify
-429 responses slow playback polling; playlist requests remain independently
-retryable. The last successfully loaded playlist list is available offline.
+IDs for song lists and a Wikipedia photo when available. The Settings tab holds
+Spotify connection, playback sync, volume, lyric timing, visual themes, a floating
+lyrics widget, and an optional ambient screensaver. The app also has a local
+listening dashboard and timeline, lyric insights, and full-screen lyric controls.
+Artist and song data come from the existing providers; the AI interpretation
+button uses an on-device browser model only when the browser supports it.
+
+Active Spotify Connect playback is checked every 12 seconds by default while
+playing on a visible page. Settings allows 3–30 seconds; idle and hidden tabs
+check less often. Mobile browsers may suspend JavaScript while another app is
+in front, so the page refreshes playback when it becomes visible again unless
+Spotify has asked the app to wait. Actual Spotify `Retry-After` responses are
+respected across API calls. The playlist browser retains the last loaded list,
+automatically retries after a rate limit, and offers a manual retry when allowed.
+The last loaded tracks for up to eight playlists are also available during rate
+limits. An upstream 429 cannot be removed by the website.
 
 ## Spotify setup
 
-Spotify is connected from the app with **Connect Spotify**. The server owns the
+Spotify is connected from **Settings → Spotify** with **Connect Spotify**. The server owns the
 OAuth exchange, so the browser never sees the client secret:
 
 - `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` — create an app at

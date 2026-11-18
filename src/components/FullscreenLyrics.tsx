@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { AdState, LyricLine, Track } from '../types'
 import { buildWordTimings, ensureTimedLyrics, getActiveLineIndex, lyricTime, wordIndexAt } from '../lib/lyrics'
 
@@ -37,7 +37,7 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
   const line = activeIndex >= 0 ? lyrics[activeIndex] : undefined
   const nextLine = lyrics[activeIndex + 1]
 
-  const words = useMemo(() => buildWordTimings(line, nextLine), [line, nextLine])
+  const words = useMemo(() => line?.words?.length ? buildWordTimings(line, nextLine) : [], [line, nextLine])
   const revealed = wordIndexAt(words, t) + 1
 
   const tokens = useMemo(() => words.slice(0, Math.max(0, revealed)).map((word, i) => ({
@@ -61,13 +61,27 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
     return clamp((t - line.time) / Math.max(0.8, end - line.time), 0, 1)
   }, [t, line, nextLine])
 
+  const controls = useRef({ onClose, onTogglePlay, onSeek, currentTime })
+  useEffect(() => { controls.current = { onClose, onTogglePlay, onSeek, currentTime } })
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLButtonElement) return
+      if (event.key === 'Escape') controls.current.onClose()
+      if (event.key === ' ') { event.preventDefault(); controls.current.onTogglePlay() }
+      if (event.key === 'ArrowRight') { event.preventDefault(); controls.current.onSeek(controls.current.currentTime + 5) }
+      if (event.key === 'ArrowLeft') { event.preventDefault(); controls.current.onSeek(Math.max(0, controls.current.currentTime - 5)) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   if (!track) return null
 
   const delay = (delta: number) => onDelayChange(clamp(delayMs + delta, -DELAY_LIMIT, DELAY_LIMIT))
 
   return (
     <div className="stage">
-      <div className="stage-art" style={track.cover?.startsWith('http') ? { backgroundImage: `url(${track.cover})` } : { background: track.cover }} />
+      <div className="stage-art" key={track.id} style={track.cover?.startsWith('http') ? { backgroundImage: `url(${track.cover})` } : { background: track.cover }} />
       <div className="stage-veil" />
 
       <header className="stage-top">
@@ -103,7 +117,7 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
           <div className="line-progress"><i style={{ transform: `scaleX(${lineProgress})` }} /></div>
           <div className="stage-sentence" key={`${track.id}-${activeIndex}`} aria-live="polite">
             {sentenceDone ? null : (
-              tokens.map((token, i) => (
+              words.length ? tokens.map((token, i) => (
                 <span
                   key={`${i}-${token.text}`}
                   className={`word-token${token.current ? ' current' : ''}`}
@@ -111,7 +125,7 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
                 >
                   {token.text}
                 </span>
-              ))
+              )) : <span className="stage-line-fallback">{line?.text || 'Waiting for lyrics…'}</span>
             )}
           </div>
         </div>

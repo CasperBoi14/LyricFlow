@@ -4,6 +4,7 @@ import { getSpotifyActivePlayback, SpotifyApiError, type SpotifyActivePlayback }
 /** Keep the open page aligned with the account's active Spotify Connect device. */
 export function useSpotifyFollow(
   ready: boolean,
+  intervalMs: number,
   onPlayback: (playback: SpotifyActivePlayback | null) => void,
   onError: (message: string | null) => void,
 ) {
@@ -21,14 +22,14 @@ export function useSpotifyFollow(
     const poll = async () => {
       if (stopped || pending) return
       pending = true
-      let wait = document.hidden ? 30_000 : 3_000
+      let wait = document.hidden ? 60_000 : intervalMs
       try {
         const playback = await getSpotifyActivePlayback()
         if (!stopped) {
           rateLimitFailures = 0
           callbacks.current.onError(null)
           callbacks.current.onPlayback(playback)
-          if (!playback || !playback.playing) wait = document.hidden ? 30_000 : 10_000
+          if (!playback || !playback.playing) wait = document.hidden ? 60_000 : Math.max(15_000, intervalMs)
         }
       } catch (error) {
         if (!stopped) {
@@ -67,7 +68,7 @@ export function useSpotifyFollow(
       window.clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [ready])
+  }, [ready, intervalMs])
 
   return () => pollNow.current()
 }
