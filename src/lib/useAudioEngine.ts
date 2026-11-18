@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { AdState, Track } from '../types'
 import { loadYouTubeApi } from './audio'
+import { AudioEffects, type SoundSettings } from './audioEffects'
 import {
   blockSpotifyUri,
   canUseSpotifyPlayback,
@@ -8,6 +9,7 @@ import {
   getSpotifySnapshot,
   isSpotifyUriBlocked,
   refreshSpotifyState,
+  setSpotifyDeviceVolume,
   spotifyPausePlayback,
   spotifyPlayUri,
   spotifySeekTo,
@@ -21,6 +23,8 @@ type Options = {
   externalPlayback?: boolean
   /** Hold audio until the app has chosen between Spotify and YouTube. */
   holdPlayback?: boolean
+  sound: SoundSettings
+  onSource: (source: string) => void
   onTime: (t: number) => void
   onPlayingChange: (playing: boolean) => void
   onDuration: (duration: number) => void
@@ -47,6 +51,7 @@ export function useAudioEngine(opts: Options) {
   const playerRef = useRef<any>(null)
   const playerReady = useRef(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const effectsRef = useRef<AudioEffects | null>(null)
   const pendingYt = useRef<string | null>(null)
   const suppressPause = useRef(false)
   const sourceKey = useRef('')
@@ -93,6 +98,8 @@ export function useAudioEngine(opts: Options) {
       pendingYt.current = null
       sourceKey.current = ''
       audioRef.current?.pause()
+      effectsRef.current?.close()
+      effectsRef.current = null
       audioRef.current = null
       host.remove()
       void spotifyPausePlayback()
@@ -118,6 +125,7 @@ export function useAudioEngine(opts: Options) {
     if (key === sourceKey.current) return
     const previous = sourceKey.current
     sourceKey.current = key
+    cb.current.onSource(key)
 
     cb.current.onError(null)
     publishAd(null)
@@ -143,6 +151,7 @@ export function useAudioEngine(opts: Options) {
 
     const startYouTube = (id: string) => {
       sourceKey.current = `yt:${id}`
+      cb.current.onSource(sourceKey.current)
       pendingYt.current = id
       audioRef.current?.removeAttribute('src')
       cb.current.onTime(0)
@@ -168,6 +177,7 @@ export function useAudioEngine(opts: Options) {
             events: {
               onReady: (e: any) => {
                 playerReady.current = true
+                try { e.target.setVolume?.(cb.current.sound.volume) } catch { /* ignore */ }
                 try { e.target.getIFrame?.().setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture') } catch { /* ignore */ }
                 const queued = pendingYt.current
                 if (!queued) return
@@ -205,8 +215,10 @@ export function useAudioEngine(opts: Options) {
       if (!audioRef.current) {
         const element = new Audio()
         element.preload = 'auto'
+        element.crossOrigin = 'anonymous'
         audioRef.current = element
       }
+      cb.current.onSource(sourceKey.current)
       const element = audioRef.current
       element.src = url
       element.onloadedmetadata = () => cb.current.onDuration(element.duration || 0)
@@ -231,6 +243,7 @@ export function useAudioEngine(opts: Options) {
       else if (latest?.audioUrl) startAudio(latest.audioUrl)
       else {
         sourceKey.current = `none:${latest?.id || ''}`
+        cb.current.onSource(sourceKey.current)
         cb.current.onTime(0)
         cb.current.onDuration(latest?.duration || 0)
       }
@@ -274,6 +287,7 @@ export function useAudioEngine(opts: Options) {
           return
         }
         spReady.current = true
+        setSpotifyDeviceVolume(cb.current.sound.volume)
         try {
           if (playingRef.current) {
             spStarting.current = true
@@ -310,6 +324,26 @@ export function useAudioEngine(opts: Options) {
     cb.current.onDuration(0)
     if (isDemo) { simulate.current = true; simTime.current = 0 }
   }, [spotifyUri, ytId, audioUrl, isDemo, hold, opts.track, opts.spotifyReady, opts.externalPlayback])
+
+  useEffect(() => {
+    const settings = opts.sound
+    const key = sourceKey.current
+    if (key.startsWith('yt:')) {
+      try { playerRef.current?.setVolume?.(settings.volume) } catch { /* player not ready */ }
+    } else if (key.startsWith('spotify:')) {
+      setSpotifyDeviceVolume(settings.volume)
+    } else if (key.startsWith('audio:') && audioRef.current) {
+      const audio = audioRef.current
+      if (!effectsRef.current && (settings.bass !== 0 || settings.treble !== 0 || settings.vocals !== 0)) {
+        try { effectsRef.current = new AudioEffects(audio) }
+        catch { cb.current.onError('Sound effects are unavailable for this audio source.') }
+      }
+      if (effectsRef.current) {
+        audio.volume = 1
+        effectsRef.current.update(settings)
+      } else audio.volume = settings.volume / 100
+    }
+  }, [opts.sound, opts.track, opts.externalPlayback])
 
   useEffect(() => {
     const key = sourceKey.current

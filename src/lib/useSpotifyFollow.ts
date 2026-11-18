@@ -8,6 +8,7 @@ export function useSpotifyFollow(
   onError: (message: string | null) => void,
 ) {
   const callbacks = useRef({ onPlayback, onError })
+  const pollNow = useRef<() => void>(() => {})
   useEffect(() => { callbacks.current = { onPlayback, onError } })
 
   useEffect(() => {
@@ -19,12 +20,15 @@ export function useSpotifyFollow(
     const poll = async () => {
       if (stopped || pending) return
       pending = true
-      let wait = document.hidden ? 60_000 : 15_000
+      let wait = document.hidden ? 60_000 : 8_000
       try {
         const playback = await getSpotifyActivePlayback()
         if (!stopped) {
           callbacks.current.onError(null)
           callbacks.current.onPlayback(playback)
+          if (!document.hidden && playback?.playing && playback.duration > playback.position) {
+            wait = Math.min(wait, Math.max(3_000, (playback.duration - playback.position) * 1_000 + 350))
+          }
         }
       } catch (error) {
         if (!stopped) {
@@ -43,18 +47,23 @@ export function useSpotifyFollow(
       }
     }
 
-    const onVisible = () => {
-      if (document.hidden || pending) return
+    const refresh = () => {
+      if (pending) return
       window.clearTimeout(timer)
       void poll()
     }
+    pollNow.current = refresh
+    const onVisible = () => { if (!document.hidden) refresh() }
 
     void poll()
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       stopped = true
+      pollNow.current = () => {}
       window.clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [ready])
+
+  return () => pollNow.current()
 }

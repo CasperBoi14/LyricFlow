@@ -15,6 +15,7 @@ let deviceId: string | null = null
 let connecting: Promise<any | null> | null = null
 let unavailable: string | null = null
 let snapshot: SpotifySnapshot | null = null
+let onTrackChanged: (() => void) | null = null
 
 /** Tracks Spotify refused to play, so the app can fall back to YouTube without looping. */
 const blockedUris = new Set<string>()
@@ -50,6 +51,7 @@ function loadSdk(): Promise<any> {
 
 function publish(state: any) {
   if (!state) return
+  const previousUri = snapshot?.uri
   snapshot = {
     paused: !!state.paused,
     position: Math.max(0, (state.position || 0) / 1000),
@@ -57,6 +59,12 @@ function publish(state: any) {
     uri: state.track_window?.current_track?.uri || null,
     at: performance.now(),
   }
+  if (snapshot.uri && snapshot.uri !== previousUri) onTrackChanged?.()
+}
+
+export function subscribeSpotifyTrackChanges(callback: () => void) {
+  onTrackChanged = callback
+  return () => { if (onTrackChanged === callback) onTrackChanged = null }
 }
 
 export function canUseSpotifyPlayback(): boolean {
@@ -97,6 +105,10 @@ export function getSpotifySnapshot(): SpotifySnapshot | null {
 
 export function getSpotifyDeviceId(): string | null {
   return deviceId
+}
+
+export function setSpotifyDeviceVolume(volume: number) {
+  try { void player?.setVolume?.(Math.max(0, Math.min(1, volume / 100))) } catch { /* device not ready */ }
 }
 
 export function refreshSpotifyState() {

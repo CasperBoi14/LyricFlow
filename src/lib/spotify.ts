@@ -48,6 +48,7 @@ export type SpotifyActivePlayback = {
   playing: boolean
   deviceId: string | null
   deviceName: string
+  deviceType: string
 }
 
 export class SpotifyApiError extends Error {
@@ -395,7 +396,7 @@ export async function getSpotifyActivePlayback(): Promise<SpotifyActivePlayback 
     currently_playing_type?: string
     progress_ms?: number | null
     is_playing?: boolean
-    device?: { id?: string | null; name?: string } | null
+    device?: { id?: string | null; name?: string; type?: string } | null
   }
   const track = data.item
   if ((data.currently_playing_type && data.currently_playing_type !== 'track') || !track?.uri?.startsWith('spotify:track:')) return null
@@ -407,6 +408,7 @@ export async function getSpotifyActivePlayback(): Promise<SpotifyActivePlayback 
     playing: !!data.is_playing,
     deviceId: data.device?.id || null,
     deviceName: data.device?.name || 'Spotify device',
+    deviceType: data.device?.type || 'Device',
   }
 }
 

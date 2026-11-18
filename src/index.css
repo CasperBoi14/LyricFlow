@@ -176,6 +176,17 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
 .yt-source:hover { background: rgba(255,255,255,.06); }
 .yt-source img { width: 68px; height: 40px; border-radius: 6px; object-fit: cover; flex: 0 0 auto; }
 
+.sound-panel { padding: 12px; border-top: 1px solid var(--line); display: grid; gap: 9px; }
+.sound-source { color: var(--text); font-size: 12px; overflow-wrap: anywhere; }
+.sound-source a { color: var(--accent); text-decoration: none; }
+.sound-source a:hover { text-decoration: underline; }
+.sound-refresh { justify-self: start; }
+.sound-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 46px; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.sound-row input { width: 100%; accent-color: var(--accent); }
+.sound-row input:disabled { opacity: .35; }
+.sound-row output { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.sound-panel p { margin: 0; line-height: 1.4; }
+
 /* ---------- Player ---------- */
 .player { display: grid; grid-template-columns: minmax(0, 1fr) 2fr minmax(0, 1.35fr); gap: 16px; align-items: center; padding: 10px 16px; border-radius: 14px; overflow: visible; z-index: 2; }
 .now-playing { display: flex; align-items: center; gap: 11px; min-width: 0; }

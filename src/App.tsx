@@ -12,9 +12,11 @@ import { findAudioSource, isPreviewAudioUrl } from './lib/audio'
 import { hasBackend } from './lib/api'
 import { resolveToTrack } from './lib/lrclib'
 import { useAudioEngine } from './lib/useAudioEngine'
+import { type SoundSettings } from './lib/audioEffects'
+import { SoundPanel } from './components/SoundPanel'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
 import { beginSpotifyLogin, completeSpotifyLogin, findSpotifyTrack, hasSpotifyAuth, hasSpotifyPlayback, spotifyFetch, type SpotifyActivePlayback } from './lib/spotify'
-import { canUseSpotifyPlayback, getSpotifyDeviceId, isSpotifyUriBlocked, resetSpotifyPlayer } from './lib/spotifyPlayer'
+import { canUseSpotifyPlayback, getSpotifyDeviceId, isSpotifyUriBlocked, resetSpotifyPlayer, subscribeSpotifyTrackChanges } from './lib/spotifyPlayer'
 import { useSpotifyFollow } from './lib/useSpotifyFollow'
 import {
   createPlaylist,
@@ -120,6 +122,10 @@ export default function App() {
   const [connectingSpotify, setConnectingSpotify] = useState(false)
   const [remotePlayback, setRemotePlayback] = useState<RemotePlayback | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [sound, setSound] = useState<SoundSettings>({ volume: 100, bass: 0, treble: 0, vocals: 0 })
+  const [playbackSource, setPlaybackSource] = useState('')
+  const remoteVolumeTimer = useRef(0)
+  useEffect(() => () => window.clearTimeout(remoteVolumeTimer.current), [])
   const live = useLiveIdentify()
 
   const selected = useMemo<Track | null>(() => catalog.find((t) => t.id === selectedId) ?? null, [catalog, selectedId])
@@ -140,6 +146,8 @@ export default function App() {
     spotifyReady,
     externalPlayback: !!remotePlayback,
     holdPlayback: !!pendingSpotify && pendingSpotify === selectedId && !selected?.spotifyUri,
+    sound,
+    onSource: setPlaybackSource,
     onTime: (value) => { if (!remoteRef.current) setTime(value) },
     onPlayingChange: (value) => { if (!remoteRef.current) setPlaying(value) },
     onDuration: (value) => { if (!remoteRef.current) setAudioDuration(value) },
@@ -172,7 +180,7 @@ export default function App() {
   useEffect(() => { saveSavedTracks(catalog) }, [catalog])
   useEffect(() => { saveRecentTrackIds(recentIds) }, [recentIds])
 
-  useSpotifyFollow(spotifyReady, (playback) => {
+  const refreshSpotifyPlayback = useSpotifyFollow(spotifyReady, (playback) => {
     if (!playback) {
       ignoredRemoteUriRef.current = null
       if (remoteRef.current) {
@@ -236,6 +244,7 @@ export default function App() {
       setSelectedId(trackId)
     }
   }, setSyncError)
+  useEffect(() => subscribeSpotifyTrackChanges(refreshSpotifyPlayback), [refreshSpotifyPlayback])
 
   const isFollowing = !!remotePlayback
   useEffect(() => {
@@ -369,7 +378,9 @@ export default function App() {
   const currentIndex = catalog.findIndex((t) => t.id === selectedId)
   const next = () => {
     if (remoteRef.current) {
-      void spotifyFetch('/me/player/next', { method: 'POST' }).catch((error) => setPlaybackNotice(error?.message || 'Could not skip on Spotify.'))
+      void spotifyFetch('/me/player/next', { method: 'POST' })
+        .then(() => { window.setTimeout(refreshSpotifyPlayback, 400); window.setTimeout(refreshSpotifyPlayback, 1_500) })
+        .catch((error) => setPlaybackNotice(error?.message || 'Could not skip on Spotify.'))
       return
     }
     if (!catalog.length) return
@@ -381,7 +392,9 @@ export default function App() {
   }
   const prev = () => {
     if (remoteRef.current) {
-      void spotifyFetch('/me/player/previous', { method: 'POST' }).catch((error) => setPlaybackNotice(error?.message || 'Could not skip on Spotify.'))
+      void spotifyFetch('/me/player/previous', { method: 'POST' })
+        .then(() => { window.setTimeout(refreshSpotifyPlayback, 400); window.setTimeout(refreshSpotifyPlayback, 1_500) })
+        .catch((error) => setPlaybackNotice(error?.message || 'Could not skip on Spotify.'))
       return
     }
     if (!catalog.length) return
@@ -439,6 +452,18 @@ export default function App() {
   }
 
   const playbackDuration = audioDuration || selected?.duration || 0
+
+  const updateSound = (key: keyof SoundSettings, value: number) => {
+    setSound((current) => ({ ...current, [key]: value }))
+    if (key === 'volume' && remoteRef.current?.deviceId) {
+      window.clearTimeout(remoteVolumeTimer.current)
+      const deviceId = remoteRef.current.deviceId
+      remoteVolumeTimer.current = window.setTimeout(() => {
+        void spotifyFetch(`/me/player/volume?volume_percent=${value}&device_id=${encodeURIComponent(deviceId)}`, { method: 'PUT' })
+          .catch((error) => setPlaybackNotice(error?.message || 'Could not change the phone volume.'))
+      }, 400)
+    }
+  }
 
   const togglePlayback = () => {
     const remote = remoteRef.current
@@ -556,15 +581,7 @@ export default function App() {
           )}
           {!hasBackend && <ProviderSetup onSaved={onProvidersSaved} />}
           <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
-          {selected?.youtubeId && !remotePlayback && (
-            <div className="youtube-box">
-              <div className="section-title">Audio source</div>
-              <a className="yt-source" href={`https://www.youtube.com/watch?v=${selected.youtubeId}`} target="_blank" rel="noreferrer">
-                <img src={`https://i.ytimg.com/vi/${selected.youtubeId}/mqdefault.jpg`} alt="" />
-                <span>Full track · YouTube</span>
-              </a>
-            </div>
-          )}
+          <SoundPanel source={playbackSource} track={selected} remoteDevice={remotePlayback?.deviceName} remoteDeviceType={remotePlayback?.deviceType} sound={sound} onChange={updateSound} onRefresh={refreshSpotifyPlayback} />
         </aside>
       </div>
 
