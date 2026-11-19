@@ -18,7 +18,6 @@ export function SpotifyAccountSettings({ connected, connecting, error, deviceNam
   const [devices, setDevices] = useState<SpotifyDevice[]>([])
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [moving, setMoving] = useState<string | null>(null)
-  const [openedApp, setOpenedApp] = useState(false)
   const nativeApp = hasSpotifyNativeBridge()
   const canConnect = !connecting && (serverConfigured || !!clientId.trim())
   const connect = (mode: 'app' | 'web' = 'web') => onConnect(serverConfigured ? undefined : clientId, mode)
@@ -73,13 +72,12 @@ export function SpotifyAccountSettings({ connected, connecting, error, deviceNam
           <p className="muted small">Connect to browse your Spotify playlists and follow the song playing on your phone. In-app Spotify playback needs Premium.</p>
           {!serverConfigured && <label className="settings-slider"><span>Spotify Client ID</span><input className="search" value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="Paste your Spotify Client ID" /></label>}
           <div className="row wrap">
-            {nativeApp ? <button className="btn primary spotify-connect" onClick={() => connect('app')} disabled={!canConnect}>{connecting ? 'Connecting…' : 'Connect with Spotify app'}</button>
-              : <a className="btn spotify-connect" href="spotify:" onClick={() => setOpenedApp(true)}>Open installed Spotify app</a>}
+            {nativeApp && <button className="btn primary spotify-connect" onClick={() => connect('app')} disabled={!canConnect}>{connecting ? 'Connecting…' : 'Connect with Spotify app'}</button>}
             <button className={nativeApp ? 'btn spotify-connect' : 'btn primary spotify-connect'} onClick={() => connect('web')} disabled={!canConnect}>{connecting ? 'Opening Spotify…' : 'Log in on Spotify website'}</button>
           </div>
-          {!nativeApp && openedApp && <div className="notice">After checking that you are signed in to the Spotify app, return here and <button className="link" onClick={() => connect('web')} disabled={!canConnect}>finish connecting LyricFlow</button>. Spotify requires this browser authorization to give LyricFlow access. If the app did not open, use the website login button.</div>}
+          {!nativeApp && <p className="muted small">This Safari page cannot receive authorization from the installed Spotify app. App-based sign-in requires the separate LyricFlow iPad app.</p>}
           {nativeApp && <p className="muted small">The app option uses Spotify's iOS sign-in and returns directly to LyricFlow.</p>}
-          <div className="redirect-box"><span className="muted small">Add this redirect URI to your Spotify app:</span><code>{spotifyRedirectTarget()}</code></div>
+          <div className="redirect-box"><span className="muted small">Add this exact URL under Redirect URIs in the Spotify Developer Dashboard. The Website field does not count:</span><code>{spotifyRedirectTarget()}</code></div>
           {nativeApp && <div className="redirect-box"><span className="muted small">Also add this iOS app redirect URI:</span><code>com.pxlwebworks.lyricflow://spotify-callback</code></div>}
           <a className="link" href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">Spotify developer dashboard</a>
         </>

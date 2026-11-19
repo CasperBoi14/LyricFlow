@@ -46,6 +46,11 @@ Spotify app and return to LyricFlow. **Log in on Spotify website** opens a syste
 browser login. In ordinary Safari, LyricFlow uses the browser OAuth flow. The
 server owns the website OAuth exchange, so the browser never sees the client secret:
 
+The Spotify Developer Dashboard's **Website** field does not register a login
+callback. For Safari login, add `https://casperboi14.github.io/LyricFlow/`
+under **Redirect URIs** as well as the native app URI below. Opening Spotify
+from Safari alone does not authorize LyricFlow.
+
 - `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` — create an app at
   [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and
   add the redirect URI the app displays under **Spotify → Redirect URI** exactly
