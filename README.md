@@ -16,6 +16,11 @@ lyrics widget, and an optional ambient screensaver. The app also has a local
 listening dashboard and timeline, and full-screen lyric controls.
 Artist and song data come from the existing providers.
 
+The lyrics **Fullscreen** button asks Safari to enter system fullscreen, including
+the prefixed Fullscreen API used by iPadOS 15. Safari's tabs and toolbar should
+disappear when the browser grants the request. The **Fill screen** button retries
+the request if the browser did not enter fullscreen on the first tap.
+
 Active Spotify Connect playback is checked every 3 seconds by default while
 playing on a visible page. Settings allows 3–30 seconds; idle and hidden tabs
 check less often. Mobile browsers may suspend JavaScript while another app is
@@ -35,8 +40,11 @@ no animation, a soft fade, and a gentle rise for the active word.
 
 ## Spotify setup
 
-Spotify is connected from **Settings → Spotify** with **Connect Spotify**. The server owns the
-OAuth exchange, so the browser never sees the client secret:
+Spotify is connected from **Settings → Spotify**. In the native iPad app,
+**Connect with Spotify app** uses Spotify's iOS SDK to authorize in the installed
+Spotify app and return to LyricFlow. **Log in on Spotify website** opens a system
+browser login. In ordinary Safari, LyricFlow uses the browser OAuth flow. The
+server owns the website OAuth exchange, so the browser never sees the client secret:
 
 - `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` — create an app at
   [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and
@@ -48,8 +56,26 @@ OAuth exchange, so the browser never sees the client secret:
   from; a mismatch fails with `redirect_uri: Not matching configuration`.
 - The Fastify server reads `backend/.env`; Vercel functions read the project's
   environment variables. The Vite dev server also reads `backend/.env`.
-- Playback uses the Web Playback SDK and requires Spotify Premium plus the
-  `streaming` scope, which **Connect Spotify** requests.
+- Browser playback uses the Web Playback SDK and requires Spotify Premium plus
+  the `streaming` scope, which both connection options request.
+
+### Native iPad app
+
+The `ios/` directory contains the iPad app. It loads the published LyricFlow
+website in a `WKWebView` and passes Spotify's native PKCE session to the web UI.
+The app uses Spotify's `SpotifyLogin` package, version 3.1.2, and targets iPadOS
+15 or later, including the iPad Air 2 on iPadOS 15.8.8.
+
+In the Spotify Developer Dashboard, register the native bundle ID
+`com.pxlwebworks.lyricflow`, enable iOS, and add the exact redirect URI
+`com.pxlwebworks.lyricflow://spotify-callback`. Keep the website redirect URI above for Safari.
+The same Spotify Client ID is used for both. The app gets it from the website's
+Spotify configuration or from the Client ID entered in Settings.
+
+On a Mac with Xcode and XcodeGen installed, run `cd ios && xcodegen generate`,
+open `LyricFlow.xcodeproj`, set your Apple signing team, and build to the iPad.
+Publish the updated website before testing the native connection, since the app
+loads `https://casperboi14.github.io/LyricFlow/`.
 
 `VITE_AUDD_API_TOKEN` can bake an AudD token into the build (or enter it under
 **Song recognition** in the app). Keys entered in the app are stored in

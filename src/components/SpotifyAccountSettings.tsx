@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getSpotifyClientId, getSpotifyDevices, getSpotifyServerConfig, hasSpotifyPlayback, spotifyRedirectTarget, transferSpotifyPlayback, type SpotifyDevice } from '../lib/spotify'
+import { getSpotifyClientId, getSpotifyDevices, getSpotifyServerConfig, hasSpotifyNativeBridge, hasSpotifyPlayback, spotifyRedirectTarget, transferSpotifyPlayback, type SpotifyDevice } from '../lib/spotify'
 
 type Props = {
   connected: boolean
   connecting: boolean
   error: string | null
   deviceName?: string
-  onConnect: (clientId?: string) => void
+  onConnect: (clientId?: string, mode?: 'app' | 'web') => void
   onDisconnect: () => void
   onDismissError: () => void
   onTransferred: () => void
@@ -18,6 +18,10 @@ export function SpotifyAccountSettings({ connected, connecting, error, deviceNam
   const [devices, setDevices] = useState<SpotifyDevice[]>([])
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [moving, setMoving] = useState<string | null>(null)
+  const [openedApp, setOpenedApp] = useState(false)
+  const nativeApp = hasSpotifyNativeBridge()
+  const canConnect = !connecting && (serverConfigured || !!clientId.trim())
+  const connect = (mode: 'app' | 'web' = 'web') => onConnect(serverConfigured ? undefined : clientId, mode)
 
   const refreshDevices = async () => {
     setDeviceError(null)
@@ -51,7 +55,7 @@ export function SpotifyAccountSettings({ connected, connecting, error, deviceNam
         <>
           <p className="muted small">{deviceName ? `Following ${deviceName}. ` : ''}{hasSpotifyPlayback() ? 'In-app playback is enabled.' : 'Reconnect to grant in-app playback access.'}</p>
           <div className="row wrap">
-            <button className="btn spotify-btn" onClick={() => onConnect(serverConfigured ? undefined : clientId)} disabled={connecting}>Reconnect Spotify</button>
+            <button className="btn spotify-btn" onClick={() => connect(nativeApp ? 'app' : 'web')} disabled={!canConnect}>Reconnect Spotify</button>
             <button className="btn ghost" onClick={onDisconnect}>Disconnect</button>
           </div>
           <div className="spotify-device-list">
@@ -68,8 +72,15 @@ export function SpotifyAccountSettings({ connected, connecting, error, deviceNam
         <>
           <p className="muted small">Connect to browse your Spotify playlists and follow the song playing on your phone. In-app Spotify playback needs Premium.</p>
           {!serverConfigured && <label className="settings-slider"><span>Spotify Client ID</span><input className="search" value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="Paste your Spotify Client ID" /></label>}
-          <button className="btn primary spotify-connect" onClick={() => onConnect(serverConfigured ? undefined : clientId)} disabled={connecting || (!serverConfigured && !clientId.trim())}>{connecting ? 'Opening Spotify…' : 'Connect Spotify'}</button>
+          <div className="row wrap">
+            {nativeApp ? <button className="btn primary spotify-connect" onClick={() => connect('app')} disabled={!canConnect}>{connecting ? 'Connecting…' : 'Connect with Spotify app'}</button>
+              : <a className="btn spotify-connect" href="spotify:" onClick={() => setOpenedApp(true)}>Open installed Spotify app</a>}
+            <button className={nativeApp ? 'btn spotify-connect' : 'btn primary spotify-connect'} onClick={() => connect('web')} disabled={!canConnect}>{connecting ? 'Opening Spotify…' : 'Log in on Spotify website'}</button>
+          </div>
+          {!nativeApp && openedApp && <div className="notice">After checking that you are signed in to the Spotify app, return here and <button className="link" onClick={() => connect('web')} disabled={!canConnect}>finish connecting LyricFlow</button>. Spotify requires this browser authorization to give LyricFlow access. If the app did not open, use the website login button.</div>}
+          {nativeApp && <p className="muted small">The app option uses Spotify's iOS sign-in and returns directly to LyricFlow.</p>}
           <div className="redirect-box"><span className="muted small">Add this redirect URI to your Spotify app:</span><code>{spotifyRedirectTarget()}</code></div>
+          {nativeApp && <div className="redirect-box"><span className="muted small">Also add this iOS app redirect URI:</span><code>com.pxlwebworks.lyricflow://spotify-callback</code></div>}
           <a className="link" href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">Spotify developer dashboard</a>
         </>
       )}

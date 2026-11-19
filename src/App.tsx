@@ -22,8 +22,9 @@ import { useAtmosphere } from './lib/useAtmosphere'
 import { FloatingLyricsWidget } from './components/FloatingLyricsWidget'
 import { AmbientScreensaver } from './components/AmbientScreensaver'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
-import { beginSpotifyLogin, completeSpotifyLogin, disconnectSpotify, findSpotifyTrack, hasSpotifyAuth, setSpotifyClientId, spotifyFetch, type SpotifyActivePlayback } from './lib/spotify'
+import { acceptSpotifyNativeLogin, beginSpotifyLogin, beginSpotifyNativeLogin, completeSpotifyLogin, disconnectSpotify, findSpotifyTrack, getSpotifyClientId, getSpotifyServerConfig, hasSpotifyAuth, hasSpotifyNativeBridge, setSpotifyClientId, spotifyFetch, type SpotifyActivePlayback, type SpotifyNativeAuthResult } from './lib/spotify'
 import { getSpotifyDeviceId, resetSpotifyPlayer, subscribeSpotifyTrackChanges } from './lib/spotifyPlayer'
+import { browserFullscreenElement, canUseBrowserFullscreen, exitBrowserFullscreen, requestBrowserFullscreen } from './lib/browserFullscreen'
 import { useSpotifyFollow } from './lib/useSpotifyFollow'
 import {
   createPlaylist,
@@ -183,7 +184,7 @@ export default function App() {
 
   useEffect(() => {
     const onFullscreenChange = () => {
-      const active = Boolean(document.fullscreenElement)
+      const active = Boolean(browserFullscreenElement())
       setBrowserFullscreen(active)
       if (!active && browserFullscreenRequested.current) {
         browserFullscreenRequested.current = false
@@ -191,16 +192,20 @@ export default function App() {
       }
     }
     document.addEventListener('fullscreenchange', onFullscreenChange)
-    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
+    }
   }, [])
 
   const openFullscreen = () => {
     if (!selectedId) return
     setFullscreen(true)
     setScreensaver(false)
-    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return
+    if (browserFullscreenElement() || !canUseBrowserFullscreen()) return
     browserFullscreenRequested.current = true
-    void document.documentElement.requestFullscreen().catch(() => {
+    void requestBrowserFullscreen().catch(() => {
       browserFullscreenRequested.current = false
       setBrowserFullscreen(false)
     })
@@ -208,8 +213,8 @@ export default function App() {
 
   const closeFullscreen = () => {
     setFullscreen(false)
-    if (browserFullscreenRequested.current && document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => {})
+    if (browserFullscreenRequested.current && browserFullscreenElement()) {
+      void exitBrowserFullscreen().catch(() => {})
     }
     browserFullscreenRequested.current = false
   }
@@ -381,6 +386,33 @@ export default function App() {
       })
   }, [])
 
+  useEffect(() => {
+    const nativeWindow = window as Window & { __lyricFlowPendingAuth?: { tokens?: SpotifyNativeAuthResult; error?: string } }
+    const onNativeAuth = (event: Event) => {
+      const detail = (event as CustomEvent<{ tokens?: SpotifyNativeAuthResult; error?: string }>).detail
+      delete nativeWindow.__lyricFlowPendingAuth
+      setConnectingSpotify(false)
+      if (detail?.error) {
+        setSpotifyError(detail.error)
+        setView('settings')
+        return
+      }
+      try {
+        if (!detail?.tokens) throw new Error('Spotify did not return a session.')
+        acceptSpotifyNativeLogin(detail.tokens)
+        resetSpotifyPlayer()
+        setSpotifyReady(true)
+        setSpotifyError(null)
+        setView('settings')
+      } catch (error) {
+        setSpotifyError(error instanceof Error ? error.message : 'Could not connect to Spotify.')
+      }
+    }
+    window.addEventListener('lyricflow:spotify-native-auth', onNativeAuth)
+    if (nativeWindow.__lyricFlowPendingAuth) onNativeAuth(new CustomEvent('lyricflow:spotify-native-auth', { detail: nativeWindow.__lyricFlowPendingAuth }))
+    return () => window.removeEventListener('lyricflow:spotify-native-auth', onNativeAuth)
+  }, [])
+
   const selectedAudioUrl = selected?.audioUrl
   const selectedSpotifyUri = selected?.spotifyUri
 
@@ -519,11 +551,16 @@ export default function App() {
     localStorage.setItem(DELAY_KEY, String(next))
   }
 
-  const connectSpotify = async (clientId?: string) => {
+  const connectSpotify = async (clientId?: string, mode: 'app' | 'web' = 'web') => {
     setSpotifyError(null)
     setConnectingSpotify(true)
     try {
       if (clientId !== undefined) setSpotifyClientId(clientId)
+      if (hasSpotifyNativeBridge()) {
+        const config = await getSpotifyServerConfig()
+        beginSpotifyNativeLogin(mode, config?.clientId || getSpotifyClientId())
+        return
+      }
       await beginSpotifyLogin()
     } catch (e: any) {
       setSpotifyError(e?.message || 'Could not connect to Spotify.')
@@ -724,7 +761,7 @@ export default function App() {
                 lyricSize={lyricSize} onLyricSizeChange={updateLyricSize}
                 autoFullscreen={autoFullscreen} onAutoFullscreenChange={updateAutoFullscreen}
                 spotifyConnected={spotifyReady} spotifyConnecting={connectingSpotify} spotifyError={spotifyError}
-                spotifyDeviceName={remotePlayback?.deviceName} onSpotifyConnect={(id) => void connectSpotify(id)}
+                spotifyDeviceName={remotePlayback?.deviceName} onSpotifyConnect={(id, mode) => void connectSpotify(id, mode)}
                 onSpotifyDisconnect={disconnectSpotifyAccount} onDismissSpotifyError={() => setSpotifyError(null)} onSpotifyTransferred={() => window.setTimeout(refreshSpotifyPlayback, 600)}
                 spotifySyncMs={spotifySyncMs} onSpotifySyncChange={updateSpotifySync}
                 visual={visual} presets={presets} onVisualChange={updateVisual} onSavePreset={savePreset}
@@ -837,6 +874,7 @@ export default function App() {
           delayMs={delayMs}
           onDelayChange={updateDelay}
           browserFullscreen={browserFullscreen}
+          canEnterBrowserFullscreen={canUseBrowserFullscreen()}
           onEnterBrowserFullscreen={openFullscreen}
           onClose={closeFullscreen}
           onTogglePlay={togglePlayback}

@@ -10,6 +10,7 @@ type Props = {
   delayMs: number
   onDelayChange: (ms: number) => void
   browserFullscreen: boolean
+  canEnterBrowserFullscreen: boolean
   onEnterBrowserFullscreen: () => void
   onClose: () => void
   onTogglePlay: () => void
@@ -18,7 +19,7 @@ type Props = {
 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 
-export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, onDelayChange, browserFullscreen, onEnterBrowserFullscreen, onClose, onTogglePlay, onSeek }: Props) {
+export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, onDelayChange, browserFullscreen, canEnterBrowserFullscreen, onEnterBrowserFullscreen, onClose, onTogglePlay, onSeek }: Props) {
   const t = lyricTime(currentTime, delayMs)
   const total = duration || track?.duration || 0
   const timed = useMemo(() => track ? ensureTimedLyrics(track.lyrics, total, track.synced) : { lyrics: [] as LyricLine[], simulated: false }, [track, total])
@@ -64,7 +65,7 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
               onChange={(event) => onDelayChange(Number(event.target.value))} aria-label="Lyric timing delay in milliseconds" />
             <output>{delayMs > 0 ? '+' : ''}{delayMs} ms</output>
           </label>
-          {!browserFullscreen && document.fullscreenEnabled && (
+          {!browserFullscreen && canEnterBrowserFullscreen && (
             <button className="stage-fill-screen" onClick={onEnterBrowserFullscreen}>Fill screen</button>
           )}
           <button className="stage-close" onClick={onClose} aria-label="Exit fullscreen lyrics">✕</button>

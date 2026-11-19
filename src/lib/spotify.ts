@@ -169,6 +169,35 @@ function saveTokens(tokens: SpotifyTokens) {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens))
 }
 
+export type SpotifyNativeAuthResult = {
+  access_token: string
+  refresh_token: string
+  expires_at: number
+  scope: string
+}
+
+export function hasSpotifyNativeBridge(): boolean {
+  return !!(window as Window & { webkit?: { messageHandlers?: { lyricFlowSpotify?: { postMessage: (message: unknown) => void } } } }).webkit?.messageHandlers?.lyricFlowSpotify
+}
+
+export function beginSpotifyNativeLogin(mode: 'app' | 'web', clientId: string): void {
+  const bridge = (window as Window & { webkit?: { messageHandlers?: { lyricFlowSpotify?: { postMessage: (message: unknown) => void } } } }).webkit?.messageHandlers?.lyricFlowSpotify
+  if (!bridge) throw new Error('The iOS Spotify connection is available only inside the LyricFlow iPad app.')
+  if (!/^[0-9a-f]{32}$/.test(clientId)) throw new Error('Enter a valid Spotify Client ID first.')
+  bridge.postMessage({ action: 'login', mode, clientId })
+}
+
+export function acceptSpotifyNativeLogin(result: SpotifyNativeAuthResult): void {
+  if (!result.access_token || !result.refresh_token || !Number.isFinite(result.expires_at) || result.expires_at <= Date.now()) {
+    throw new Error('Spotify returned an incomplete iOS session. Try connecting again.')
+  }
+  saveTokens(result)
+  localStorage.removeItem(PLAYLIST_CACHE_KEY)
+  localStorage.removeItem(TRACK_CACHE_KEY)
+  recentPlaylistPage = null
+  recentPlaylistAt = 0
+}
+
 export function hasSpotifyAuth(): boolean {
   return !!loadTokens()?.refresh_token
 }

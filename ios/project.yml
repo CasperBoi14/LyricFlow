@@ -1,0 +1,25 @@
+name: LyricFlow
+options:
+  bundleIdPrefix: com.pxlwebworks
+packages:
+  SpotifyLogin:
+    url: https://github.com/spotify/ios-auth.git
+    from: 3.1.2
+targets:
+  LyricFlow:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: LyricFlow
+      - path: LyricFlow/Info.plist
+        buildPhase: none
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pxlwebworks.lyricflow
+        PRODUCT_NAME: LyricFlow
+        TARGETED_DEVICE_FAMILY: "2"
+        INFOPLIST_FILE: LyricFlow/Info.plist
+        SWIFT_VERSION: "5.9"
+    dependencies:
+      - package: SpotifyLogin
