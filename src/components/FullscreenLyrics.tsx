@@ -9,6 +9,8 @@ type Props = {
   playing: boolean
   delayMs: number
   onDelayChange: (ms: number) => void
+  browserFullscreen: boolean
+  onEnterBrowserFullscreen: () => void
   onClose: () => void
   onTogglePlay: () => void
   onSeek: (t: number) => void
@@ -17,7 +19,7 @@ type Props = {
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 const DELAY_LIMIT = 3000
 
-export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, onDelayChange, onClose, onTogglePlay, onSeek }: Props) {
+export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, onDelayChange, browserFullscreen, onEnterBrowserFullscreen, onClose, onTogglePlay, onSeek }: Props) {
   const t = lyricTime(currentTime, delayMs)
   const total = duration || track?.duration || 0
   const timed = useMemo(() => track ? ensureTimedLyrics(track.lyrics, total, track.synced) : { lyrics: [] as LyricLine[], simulated: false }, [track, total])
@@ -38,8 +40,8 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
   useEffect(() => { controls.current = { onClose, onTogglePlay, onSeek, currentTime } })
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { controls.current.onClose(); return }
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLButtonElement) return
-      if (event.key === 'Escape') controls.current.onClose()
       if (event.key === ' ') { event.preventDefault(); controls.current.onTogglePlay() }
       if (event.key === 'ArrowRight') { event.preventDefault(); controls.current.onSeek(controls.current.currentTime + 5) }
       if (event.key === 'ArrowLeft') { event.preventDefault(); controls.current.onSeek(Math.max(0, controls.current.currentTime - 5)) }
@@ -66,6 +68,9 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
             </button>
             <button onClick={() => delay(100)} aria-label="Show words 100 milliseconds later">+</button>
           </div>
+          {!browserFullscreen && document.fullscreenEnabled && (
+            <button className="stage-fill-screen" onClick={onEnterBrowserFullscreen}>Fill screen</button>
+          )}
           <button className="stage-close" onClick={onClose} aria-label="Exit fullscreen lyrics">✕</button>
         </div>
       </header>

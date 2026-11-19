@@ -115,6 +115,8 @@ export default function App() {
   })
   const [providerVersion, setProviderVersion] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
+  const [browserFullscreen, setBrowserFullscreen] = useState(false)
+  const browserFullscreenRequested = useRef(false)
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [audioDuration, setAudioDuration] = useState(0)
@@ -146,6 +148,39 @@ export default function App() {
   const remoteVolumeTimer = useRef(0)
   useEffect(() => () => window.clearTimeout(remoteVolumeTimer.current), [])
   const live = useLiveIdentify()
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const active = Boolean(document.fullscreenElement)
+      setBrowserFullscreen(active)
+      if (!active && browserFullscreenRequested.current) {
+        browserFullscreenRequested.current = false
+        setFullscreen(false)
+      }
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+  }, [])
+
+  const openFullscreen = () => {
+    if (!selectedId) return
+    setFullscreen(true)
+    setScreensaver(false)
+    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return
+    browserFullscreenRequested.current = true
+    void document.documentElement.requestFullscreen().catch(() => {
+      browserFullscreenRequested.current = false
+      setBrowserFullscreen(false)
+    })
+  }
+
+  const closeFullscreen = () => {
+    setFullscreen(false)
+    if (browserFullscreenRequested.current && document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {})
+    }
+    browserFullscreenRequested.current = false
+  }
 
   const selected = useMemo<Track | null>(() => catalog.find((t) => t.id === selectedId) ?? null, [catalog, selectedId])
   const atmosphere = useAtmosphere(selected?.cover)
@@ -585,7 +620,7 @@ export default function App() {
 
   return (
     <div className={`app theme-${visual.background} font-${visual.font} align-${visual.align} position-${visual.position} highlight-${visual.highlight} word-${visual.wordAnimation}${visual.animations ? '' : ' no-motion'}`} style={appStyle}>
-      <div className="shell">
+      <div className="shell" inert={fullscreen} aria-hidden={fullscreen}>
         <aside className="panel sidebar">
           <div className="brand" aria-label="LyricFlow">
             <span className="brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
@@ -681,13 +716,13 @@ export default function App() {
             </div>
           )}
           {!hasBackend && <ProviderSetup onSaved={onProvidersSaved} />}
-          <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={() => setFullscreen(true)} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
+          <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={openFullscreen} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
           <SoundPanel source={playbackSource} track={selected} remoteDevice={remotePlayback?.deviceName} remoteDeviceType={remotePlayback?.deviceType}
             volume={volume} position={time} duration={playbackDuration} playing={playing} onVolumeChange={updateVolume} onRefresh={refreshSpotifyPlayback} />
         </aside>
       </div>
 
-      <footer className="panel player">
+      <footer className="panel player" inert={fullscreen} aria-hidden={fullscreen}>
         <div className="now-playing">
           <div className="mini-cover" key={selected?.id || 'empty'} style={{ background: selected?.cover?.startsWith('http') ? `url(${selected.cover}) center/cover` : (selected?.cover || 'var(--panel-2)') }} />
           <div className="np-meta">
@@ -717,13 +752,13 @@ export default function App() {
             </button>
             <button className="icon-btn tiny" onClick={() => updateDelay(delayMs + 100)} aria-label="Show words 100 milliseconds later">+</button>
           </div>
-          <button className="btn" onClick={() => setFullscreen(true)}>Fullscreen</button>
+          <button className="btn" onClick={openFullscreen} disabled={!selected}>Fullscreen</button>
         </div>
       </footer>
 
       {visual.widget && selected && !fullscreen && !screensaver && <FloatingLyricsWidget track={selected} time={time} delayMs={delayMs}
         playing={playing} position={visual.widgetPosition} onTogglePlay={togglePlayback} onNext={next} onPrevious={prev}
-        onOpenFull={() => setFullscreen(true)} onClose={() => updateVisual({ widget: false })} />}
+        onOpenFull={openFullscreen} onClose={() => updateVisual({ widget: false })} />}
 
       {screensaver && visual.screensaverMinutes > 0 && selected && !fullscreen && <AmbientScreensaver track={selected} time={time} delayMs={delayMs} onExit={() => setScreensaver(false)} />}
 
@@ -735,7 +770,9 @@ export default function App() {
           playing={playing}
           delayMs={delayMs}
           onDelayChange={updateDelay}
-          onClose={() => setFullscreen(false)}
+          browserFullscreen={browserFullscreen}
+          onEnterBrowserFullscreen={openFullscreen}
+          onClose={closeFullscreen}
           onTogglePlay={togglePlayback}
           onSeek={seekPlayback}
         />
