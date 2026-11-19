@@ -70,28 +70,20 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 export async function identifyRecorded(blob: Blob): Promise<IdentifyMatch> {
   const token = getAuddToken()
+  if (token) return auddRecognize(blob, token)
 
   if (hasBackend) {
-    try {
-      const sample = await blobToBase64(blob)
-      const res = await fetch(apiUrl('/api/identify'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sample }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.error || data?.message || 'Identification failed')
-      if (!data?.title) throw new Error('No match found')
-      return data as IdentifyMatch
-    } catch (error) {
-      if (!token) throw error
-      // The backend is unreachable or refused the sample — try the browser provider.
-    }
+    const sample = await blobToBase64(blob)
+    const res = await fetch(apiUrl('/api/identify'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.error || data?.message || 'Identification failed')
+    if (!data?.title) throw new Error('No match found')
+    return data as IdentifyMatch
   }
 
-  if (!token) {
-    throw new Error('Add a free AudD token in Audio providers to recognize songs from the browser.')
-  }
-
-  return auddRecognize(blob, token)
+  throw new Error('Add an AudD token in Audio providers to recognize songs from the browser.')
 }

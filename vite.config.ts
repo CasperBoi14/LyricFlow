@@ -131,6 +131,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     root: 'src',
+    envDir: process.cwd(),
     publicDir: '../public',
     // Spotify only accepts HTTPS or a loopback IP as a redirect URI, never `localhost`.
     server: { host: '127.0.0.1' },
