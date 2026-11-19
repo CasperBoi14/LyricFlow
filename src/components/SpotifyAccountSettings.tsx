@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getSpotifyClientId, getSpotifyDevices, getSpotifyServerConfig, hasSpotifyPlayback, spotifyRedirectTarget, transferSpotifyPlayback, type SpotifyDevice } from '../lib/spotify'
+import { activateSpotifyAppLogin, getSpotifyClientId, getSpotifyDevices, getSpotifyServerConfig, hasSpotifyPlayback, prepareSpotifyAppLogin, spotifyRedirectTarget, transferSpotifyPlayback, type PreparedSpotifyAppLogin, type SpotifyDevice } from '../lib/spotify'
 
 type Props = {
   connected: boolean
@@ -18,6 +18,9 @@ export function SpotifyAccountSettings({ connected, connecting, error, deviceNam
   const [devices, setDevices] = useState<SpotifyDevice[]>([])
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [moving, setMoving] = useState<string | null>(null)
+  const [appLogin, setAppLogin] = useState<PreparedSpotifyAppLogin | null>(null)
+  const [appLoginError, setAppLoginError] = useState<string | null>(null)
+  const isiPad = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   const canConnect = !connecting && (serverConfigured || !!clientId.trim())
   const connect = () => onConnect(serverConfigured ? undefined : clientId)
 
@@ -46,6 +49,17 @@ export function SpotifyAccountSettings({ connected, connecting, error, deviceNam
     return () => { active = false }
   }, [])
 
+  useEffect(() => {
+    if (!isiPad || connected || !canConnect) return
+    let active = true
+    void prepareSpotifyAppLogin(serverConfigured ? undefined : clientId).then((request) => {
+      if (active) { setAppLogin(request); setAppLoginError(null) }
+    }).catch((cause) => {
+      if (active) { setAppLogin(null); setAppLoginError(cause instanceof Error ? cause.message : 'Could not prepare Spotify app login.') }
+    })
+    return () => { active = false; setAppLogin(null) }
+  }, [isiPad, connected, serverConfigured, clientId, canConnect])
+
   return (
     <section className="settings-card spotify-settings">
       <div className="settings-heading"><h2>Spotify connection</h2><span className={connected ? 'status-dot connected' : 'status-dot'}>{connected ? 'Connected' : 'Not connected'}</span></div>
@@ -70,8 +84,16 @@ export function SpotifyAccountSettings({ connected, connecting, error, deviceNam
         <>
           <p className="muted small">Connect to browse your Spotify playlists and follow the song playing on your phone. In-app Spotify playback needs Premium.</p>
           {!serverConfigured && <label className="settings-slider"><span>Spotify Client ID</span><input className="search" value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="Paste your Spotify Client ID" /></label>}
-          <button className="btn primary spotify-connect" onClick={connect} disabled={!canConnect}>{connecting ? 'Opening Spotify…' : 'Connect with Spotify'}</button>
-          <p className="muted small">Spotify opens a secure login page, then returns you to LyricFlow. Your installed Spotify app can still be used for playback.</p>
+          <div className="row wrap">
+            {isiPad && <a className="btn primary spotify-connect" href={appLogin?.url || '#'} aria-disabled={!appLogin || !canConnect}
+              onClick={(event) => {
+                if (!appLogin || !canConnect) { event.preventDefault(); return }
+                activateSpotifyAppLogin(appLogin)
+              }}>Connect through Spotify app</a>}
+            <button className={isiPad ? 'btn spotify-connect' : 'btn primary spotify-connect'} onClick={connect} disabled={!canConnect}>{connecting ? 'Opening Spotify…' : 'Connect on Spotify website'}</button>
+          </div>
+          {isiPad && <p className="muted small">If Spotify does not show an approval screen or return here, come back and use the website option.</p>}
+          {appLoginError && <p className="notice error">{appLoginError}</p>}
           <div className="redirect-box"><span className="muted small">Add this exact URL under Redirect URIs in the Spotify Developer Dashboard. The Website field does not count:</span><code>{spotifyRedirectTarget()}</code></div>
           <a className="link" href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">Spotify developer dashboard</a>
         </>

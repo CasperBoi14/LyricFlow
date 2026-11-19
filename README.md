@@ -40,16 +40,17 @@ no animation, a soft fade, and a gentle rise for the active word.
 
 ## Spotify setup
 
-Spotify is connected from **Settings → Spotify** with **Connect with Spotify**.
-LyricFlow is a website, so Spotify authorization opens a secure browser page
-and returns to LyricFlow. Opening the installed Spotify app alone cannot grant
-this website access. The server owns the OAuth exchange, so the browser never
-sees the client secret:
+Spotify is connected from **Settings → Spotify**. On iPad, **Connect through
+Spotify app** sends a PKCE authorization link to the installed Spotify app and
+uses the HTTPS callback to return to LyricFlow. **Connect on Spotify website**
+uses the regular browser OAuth page. The app link is an iOS SDK protocol and its
+use from Safari is not officially documented; use the website option if Spotify
+does not show approval or return. The server owns the browser OAuth exchange,
+so the browser never sees the client secret:
 
 The Spotify Developer Dashboard's **Website** field does not register a login
 callback. For Safari login, add `https://casperboi14.github.io/LyricFlow/`
-under **Redirect URIs**. Opening Spotify from Safari alone does not authorize
-LyricFlow.
+under **Redirect URIs**. The iPad app link also uses this HTTPS redirect.
 
 - `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` — create an app at
   [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and

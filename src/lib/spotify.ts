@@ -75,6 +75,7 @@ const PLAYLIST_CACHE_KEY = 'lf-spotify-playlists-cache'
 const TRACK_CACHE_KEY = 'lf-spotify-tracks-cache'
 const VERIFIER_KEY = 'lf-spotify-verifier'
 const STATE_KEY = 'lf-spotify-state'
+const APP_LOGIN_KEY = 'lf-spotify-app-login'
 const SCOPE = 'playlist-read-private playlist-read-collaborative user-read-private user-read-email user-read-playback-state user-modify-playback-state streaming'
 type SpotifyPlaylistPage = { items: SpotifyPlaylist[]; next: string | null }
 let recentPlaylistPage: SpotifyPlaylistPage | null = null
@@ -256,6 +257,32 @@ async function resolveAuthorizeUrl(clientId: string, state: string, challenge: s
   return `https://accounts.spotify.com/authorize?${params.toString()}`
 }
 
+export type PreparedSpotifyAppLogin = { url: string; verifier: string; state: string; clientId: string }
+
+/** Prepare before the user taps: iOS requires the app link to be followed by a direct tap. */
+export async function prepareSpotifyAppLogin(enteredClientId?: string): Promise<PreparedSpotifyAppLogin> {
+  const verifier = randomString(64)
+  const state = randomString(16)
+  const challengeBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
+  const clientId = (await getSpotifyServerConfig())?.clientId || enteredClientId?.trim() || getSpotifyClientId()
+  const authorization = new URL(await resolveAuthorizeUrl(clientId, state, b64url(new Uint8Array(challengeBytes))))
+  if (authorization.origin !== 'https://accounts.spotify.com' || authorization.pathname !== '/authorize') {
+    throw new Error('Spotify returned an unexpected authorization URL.')
+  }
+  return { url: `spotify-action://authorize${authorization.search}`, verifier, state, clientId }
+}
+
+export function activateSpotifyAppLogin(request: PreparedSpotifyAppLogin): void {
+  setSpotifyClientId(request.clientId)
+  sessionStorage.setItem(VERIFIER_KEY, request.verifier)
+  sessionStorage.setItem(STATE_KEY, request.state)
+  // Spotify can return the HTTPS callback in a new Safari tab, which has a
+  // different sessionStorage. Keep this short-lived pending request per origin.
+  localStorage.setItem(APP_LOGIN_KEY, JSON.stringify({
+    verifier: request.verifier, state: request.state, clientId: request.clientId, createdAt: Date.now(),
+  }))
+}
+
 export async function beginSpotifyLogin() {
   const verifier = randomString(64)
   const state = randomString(16)
@@ -272,13 +299,21 @@ export async function completeSpotifyLogin(): Promise<boolean> {
   const error = params.get('error')
   if (!code && !error) return false
 
-  const clean = () => window.history.replaceState({}, '', window.location.pathname)
+  const clean = () => {
+    localStorage.removeItem(APP_LOGIN_KEY)
+    window.history.replaceState({}, '', window.location.pathname)
+  }
   if (error) { clean(); throw new Error(`Spotify login canceled (${error}).`) }
-  if (params.get('state') !== sessionStorage.getItem(STATE_KEY)) {
+  let pending: { verifier: string; state: string; clientId: string; createdAt: number } | null = null
+  try { pending = JSON.parse(localStorage.getItem(APP_LOGIN_KEY) || 'null') } catch { /* ignore */ }
+  const callbackState = params.get('state')
+  const sessionMatches = callbackState === sessionStorage.getItem(STATE_KEY)
+  const appMatches = !!pending && callbackState === pending.state && Date.now() - pending.createdAt < 10 * 60_000
+  if (!callbackState || (!sessionMatches && !appMatches)) {
     clean()
     throw new Error('Spotify login failed: state mismatch. Try again.')
   }
-  const verifier = sessionStorage.getItem(VERIFIER_KEY)
+  const verifier = sessionMatches ? sessionStorage.getItem(VERIFIER_KEY) : pending?.verifier
   sessionStorage.removeItem(VERIFIER_KEY)
   sessionStorage.removeItem(STATE_KEY)
   if (!verifier) { clean(); throw new Error('Spotify login expired. Try again.') }
@@ -288,7 +323,7 @@ export async function completeSpotifyLogin(): Promise<boolean> {
       grant_type: 'authorization_code',
       code: code as string,
       redirect_uri: redirectUri(),
-      client_id: await resolveSpotifyClientId(),
+      client_id: appMatches && pending ? pending.clientId : await resolveSpotifyClientId(),
       code_verifier: verifier,
     })
     saveTokens({
