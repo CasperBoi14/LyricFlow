@@ -24,7 +24,9 @@ final class LyricFlowModel: NSObject, ObservableObject {
 
     override init() {
         let configuration = WKWebViewConfiguration()
-        configuration.preferences.isElementFullscreenEnabled = true
+        if #available(iOS 15.4, *) {
+            configuration.preferences.isElementFullscreenEnabled = true
+        }
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         configuration.userContentController.add(self, name: "lyricFlowSpotify")
