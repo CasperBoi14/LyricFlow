@@ -30,6 +30,8 @@ export type Track = {
 
 export type AppView = 'library' | 'identify' | 'search' | 'lyrics' | 'settings' | 'dna' | 'timeline'
 
+export type FullscreenLyricsMode = 'words' | 'line'
+
 export type SearchResult = {
   id: string
   title: string

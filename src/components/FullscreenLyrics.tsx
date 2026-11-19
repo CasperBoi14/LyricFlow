@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import type { LyricLine, Track } from '../types'
+import type { FullscreenLyricsMode, LyricLine, Track } from '../types'
 import { buildWordTimings, ensureTimedLyrics, getActiveLineIndex, lyricTime, wordIndexAt } from '../lib/lyrics'
 
 type Props = {
@@ -8,6 +8,7 @@ type Props = {
   duration: number
   playing: boolean
   delayMs: number
+  mode: FullscreenLyricsMode
   onDelayChange: (ms: number) => void
   browserFullscreen: boolean
   canEnterBrowserFullscreen: boolean
@@ -19,7 +20,7 @@ type Props = {
 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 
-export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, onDelayChange, browserFullscreen, canEnterBrowserFullscreen, onEnterBrowserFullscreen, onClose, onTogglePlay, onSeek }: Props) {
+export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, mode, onDelayChange, browserFullscreen, canEnterBrowserFullscreen, onEnterBrowserFullscreen, onClose, onTogglePlay, onSeek }: Props) {
   const t = lyricTime(currentTime, delayMs)
   const total = duration || track?.duration || 0
   const timed = useMemo(() => track ? ensureTimedLyrics(track.lyrics, total, track.synced) : { lyrics: [] as LyricLine[], simulated: false }, [track, total])
@@ -76,13 +77,14 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
         <div className="stage-meta">
           <div className="stage-title">{track.title}</div>
           <div className="stage-artist">{track.artist}</div>
-          <div className="stage-timing-note">{timed.simulated ? 'Line timing estimated' : line?.words?.length ? 'Word synced lyrics' : 'Word timing estimated from synced lines'}</div>
+          <div className="stage-timing-note">{timed.simulated ? 'Line timing estimated' : mode === 'line' ? 'Line synced lyrics' : line?.words?.length ? 'Word synced lyrics' : 'Word timing estimated from synced lines'}</div>
         </div>
 
         <div className="stage-track">
           <div className="line-progress"><i style={{ transform: `scaleX(${lineProgress})` }} /></div>
-          <div className="stage-sentence" key={`${track.id}-${activeIndex}`} aria-live="off">
-            {words.length ? words.map((word, i) => (
+          <div className="stage-sentence" key={`${mode}-${track.id}-${activeIndex}`} aria-live="off">
+            {mode === 'line' ? <span className="stage-full-line">{line?.text || 'Waiting for lyrics…'}</span>
+              : words.length ? words.map((word, i) => (
                 <span
                   key={`${i}-${word.text}`}
                   className={`word-token${i === activeWord ? ' current' : i < activeWord ? ' sung' : ' upcoming'}`}

@@ -36,7 +36,9 @@ Choose a phone or speaker before closing this page to keep music playing there.
 Audio started in this browser stops when its tab closes. Synced lyric records
 with word timestamps use those timestamps; records with only line timestamps
 show estimated word timing, adjustable with the timing control. Settings offers
-no animation, a soft fade, and a gentle rise for the active word.
+no animation, a soft fade, and a gentle rise for the active word. Fullscreen
+lyrics can show either word-by-word progress or one complete lyric line at a
+time; this choice is saved on the device.
 
 ## Spotify setup
 

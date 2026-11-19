@@ -6,7 +6,7 @@ import { SearchView } from './components/SearchView'
 import { LibraryView } from './components/LibraryView'
 import { FullscreenLyrics } from './components/FullscreenLyrics'
 import { ProviderSetup } from './components/ProviderSetup'
-import type { AppView, Track } from './types'
+import type { AppView, FullscreenLyricsMode, Track } from './types'
 import { formatTime } from './lib/lyrics'
 import { findAudioSource, isPreviewAudioUrl } from './lib/audio'
 import { hasBackend } from './lib/api'
@@ -156,6 +156,8 @@ export default function App() {
     return Number.isFinite(saved) ? Math.max(80, Math.min(160, saved)) : 100
   })
   const [autoFullscreen, setAutoFullscreen] = useState(() => localStorage.getItem('lf-auto-fullscreen') !== 'false')
+  const [fullscreenLyricsMode, setFullscreenLyricsMode] = useState<FullscreenLyricsMode>(() =>
+    localStorage.getItem('lf-fullscreen-lyrics-mode') === 'line' ? 'line' : 'words')
   const [spotifySyncMs, setSpotifySyncMs] = useState(() => {
     const saved = Number(localStorage.getItem('lf-spotify-sync-ms') || 3_000)
     return Number.isFinite(saved) ? Math.max(3_000, Math.min(30_000, saved)) : 3_000
@@ -587,6 +589,10 @@ export default function App() {
     setAutoFullscreen(value)
     localStorage.setItem('lf-auto-fullscreen', String(value))
   }
+  const updateFullscreenLyricsMode = (value: FullscreenLyricsMode) => {
+    setFullscreenLyricsMode(value)
+    localStorage.setItem('lf-fullscreen-lyrics-mode', value)
+  }
   const updateSpotifySync = (value: number) => {
     setSpotifySyncMs(value)
     localStorage.setItem('lf-spotify-sync-ms', String(value))
@@ -727,6 +733,7 @@ export default function App() {
             ) : view === 'settings' ? (
               <SettingsView isMobile={isMobile} volume={volume} onVolumeChange={updateVolume} delayMs={delayMs} onDelayChange={updateDelay}
                 lyricSize={lyricSize} onLyricSizeChange={updateLyricSize}
+                fullscreenLyricsMode={fullscreenLyricsMode} onFullscreenLyricsModeChange={updateFullscreenLyricsMode}
                 autoFullscreen={autoFullscreen} onAutoFullscreenChange={updateAutoFullscreen}
                 spotifyConnected={spotifyReady} spotifyConnecting={connectingSpotify} spotifyError={spotifyError}
                 spotifyDeviceName={remotePlayback?.deviceName} onSpotifyConnect={(id) => void connectSpotify(id)}
@@ -840,6 +847,7 @@ export default function App() {
           duration={playbackDuration}
           playing={playing}
           delayMs={delayMs}
+          mode={fullscreenLyricsMode}
           onDelayChange={updateDelay}
           browserFullscreen={browserFullscreen}
           canEnterBrowserFullscreen={canUseBrowserFullscreen()}

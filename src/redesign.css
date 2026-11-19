@@ -155,6 +155,16 @@ body { background: var(--bg); }
 .stage-art { filter: blur(var(--theme-blur, 30px)) saturate(1.08) brightness(.75); }
 .stage-timing-note { margin-top: 11px; color: rgba(255,255,255,.48); font-size: 10px; letter-spacing: .05em; }
 .stage-sentence { gap: .24em .32em; }
+.stage-full-line {
+  display: block; width: 100%; text-align: center; overflow-wrap: anywhere;
+  font-size: calc(clamp(32px, 5.5vw, 78px) * var(--lyrics-scale, 1));
+  font-weight: 660; letter-spacing: -.035em; line-height: 1.13; color: #fff;
+  animation: wordSoftFade .28s ease-out both;
+}
+.align-left .stage-full-line { text-align: left; }
+.highlight-solid .stage-full-line { color: var(--accent-2); }
+.highlight-underline .stage-full-line { text-decoration: underline; text-decoration-color: var(--accent-2); text-underline-offset: .15em; }
+.no-motion .stage-full-line { animation: none; }
 .word-token { display: inline-block; font-size: calc(clamp(28px, 4.4vw, 62px) * var(--lyrics-scale, 1)); font-weight: 660; letter-spacing: -.035em; color: rgba(255,255,255,.36); text-shadow: none; animation: none; transition: color .2s ease, opacity .18s ease; }
 .word-token.sung { color: rgba(255,255,255,.7); }
 .word-token.current { color: #fff; text-shadow: none; }
@@ -168,7 +178,7 @@ body { background: var(--bg); }
 .word-fade .word-token.current, .word-fade .lyric-word.current { animation: wordSoftFade .28s ease-out both; }
 .word-lift .word-token.current, .word-lift .lyric-word.current { animation: wordGentleRise .3s ease-out both; }
 .word-none .word-token.current, .word-none .lyric-word.current, .no-motion .word-token, .no-motion .lyric-word { animation: none !important; }
-@media (prefers-reduced-motion: reduce) { .word-token, .lyric-word { animation: none !important; transition: none; } }
+@media (prefers-reduced-motion: reduce) { .word-token, .lyric-word, .stage-full-line { animation: none !important; transition: none; } }
 @keyframes wordSoftFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes wordGentleRise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 .floating-lyrics-card { background: #171b25; box-shadow: 0 16px 48px rgba(0,0,0,.35); }

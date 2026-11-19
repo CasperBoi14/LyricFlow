@@ -1,6 +1,7 @@
 import { SpotifyAccountSettings } from './SpotifyAccountSettings'
 import { ThemeStudio } from './ThemeStudio'
 import type { VisualPreset, VisualSettings } from '../lib/visualSettings'
+import type { FullscreenLyricsMode } from '../types'
 
 type Props = {
   isMobile: boolean
@@ -10,6 +11,8 @@ type Props = {
   onDelayChange: (value: number) => void
   lyricSize: number
   onLyricSizeChange: (value: number) => void
+  fullscreenLyricsMode: FullscreenLyricsMode
+  onFullscreenLyricsModeChange: (value: FullscreenLyricsMode) => void
   autoFullscreen: boolean
   onAutoFullscreenChange: (value: boolean) => void
   spotifyConnected: boolean
@@ -67,6 +70,14 @@ export function SettingsView(props: Props) {
       </section>
       <section className="settings-card">
         <h2>Lyrics</h2>
+        <label className="settings-slider">
+          <span>Fullscreen lyrics display</span>
+          <select className="select" value={props.fullscreenLyricsMode} onChange={(event) => props.onFullscreenLyricsModeChange(event.target.value as FullscreenLyricsMode)}>
+            <option value="words">Word by word</option>
+            <option value="line">Full line at once</option>
+          </select>
+        </label>
+        <p className="muted small">Full line shows the complete current lyric line, then switches to the next line.</p>
         <label className="settings-slider">
           <span>Word timing <output>{props.delayMs > 0 ? '+' : ''}{props.delayMs} ms</output></span>
           <input type="range" min={-3000} max={3000} step={100} value={props.delayMs} onChange={(event) => props.onDelayChange(Number(event.target.value))} />
