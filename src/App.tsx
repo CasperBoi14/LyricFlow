@@ -22,7 +22,7 @@ import { useAtmosphere } from './lib/useAtmosphere'
 import { FloatingLyricsWidget } from './components/FloatingLyricsWidget'
 import { AmbientScreensaver } from './components/AmbientScreensaver'
 import { useLiveIdentify, type LiveMatch } from './lib/useLiveIdentify'
-import { acceptSpotifyNativeLogin, beginSpotifyLogin, beginSpotifyNativeLogin, completeSpotifyLogin, disconnectSpotify, findSpotifyTrack, getSpotifyClientId, getSpotifyServerConfig, hasSpotifyAuth, hasSpotifyNativeBridge, setSpotifyClientId, spotifyFetch, type SpotifyActivePlayback, type SpotifyNativeAuthResult } from './lib/spotify'
+import { beginSpotifyLogin, completeSpotifyLogin, disconnectSpotify, findSpotifyTrack, hasSpotifyAuth, setSpotifyClientId, spotifyFetch, type SpotifyActivePlayback } from './lib/spotify'
 import { getSpotifyDeviceId, resetSpotifyPlayer, subscribeSpotifyTrackChanges } from './lib/spotifyPlayer'
 import { browserFullscreenElement, canUseBrowserFullscreen, exitBrowserFullscreen, requestBrowserFullscreen } from './lib/browserFullscreen'
 import { useSpotifyFollow } from './lib/useSpotifyFollow'
@@ -386,33 +386,6 @@ export default function App() {
       })
   }, [])
 
-  useEffect(() => {
-    const nativeWindow = window as Window & { __lyricFlowPendingAuth?: { tokens?: SpotifyNativeAuthResult; error?: string } }
-    const onNativeAuth = (event: Event) => {
-      const detail = (event as CustomEvent<{ tokens?: SpotifyNativeAuthResult; error?: string }>).detail
-      delete nativeWindow.__lyricFlowPendingAuth
-      setConnectingSpotify(false)
-      if (detail?.error) {
-        setSpotifyError(detail.error)
-        setView('settings')
-        return
-      }
-      try {
-        if (!detail?.tokens) throw new Error('Spotify did not return a session.')
-        acceptSpotifyNativeLogin(detail.tokens)
-        resetSpotifyPlayer()
-        setSpotifyReady(true)
-        setSpotifyError(null)
-        setView('settings')
-      } catch (error) {
-        setSpotifyError(error instanceof Error ? error.message : 'Could not connect to Spotify.')
-      }
-    }
-    window.addEventListener('lyricflow:spotify-native-auth', onNativeAuth)
-    if (nativeWindow.__lyricFlowPendingAuth) onNativeAuth(new CustomEvent('lyricflow:spotify-native-auth', { detail: nativeWindow.__lyricFlowPendingAuth }))
-    return () => window.removeEventListener('lyricflow:spotify-native-auth', onNativeAuth)
-  }, [])
-
   const selectedAudioUrl = selected?.audioUrl
   const selectedSpotifyUri = selected?.spotifyUri
 
@@ -551,16 +524,11 @@ export default function App() {
     localStorage.setItem(DELAY_KEY, String(next))
   }
 
-  const connectSpotify = async (clientId?: string, mode: 'app' | 'web' = 'web') => {
+  const connectSpotify = async (clientId?: string) => {
     setSpotifyError(null)
     setConnectingSpotify(true)
     try {
       if (clientId !== undefined) setSpotifyClientId(clientId)
-      if (hasSpotifyNativeBridge()) {
-        const config = await getSpotifyServerConfig()
-        beginSpotifyNativeLogin(mode, config?.clientId || getSpotifyClientId())
-        return
-      }
       await beginSpotifyLogin()
     } catch (e: any) {
       setSpotifyError(e?.message || 'Could not connect to Spotify.')
@@ -761,7 +729,7 @@ export default function App() {
                 lyricSize={lyricSize} onLyricSizeChange={updateLyricSize}
                 autoFullscreen={autoFullscreen} onAutoFullscreenChange={updateAutoFullscreen}
                 spotifyConnected={spotifyReady} spotifyConnecting={connectingSpotify} spotifyError={spotifyError}
-                spotifyDeviceName={remotePlayback?.deviceName} onSpotifyConnect={(id, mode) => void connectSpotify(id, mode)}
+                spotifyDeviceName={remotePlayback?.deviceName} onSpotifyConnect={(id) => void connectSpotify(id)}
                 onSpotifyDisconnect={disconnectSpotifyAccount} onDismissSpotifyError={() => setSpotifyError(null)} onSpotifyTransferred={() => window.setTimeout(refreshSpotifyPlayback, 600)}
                 spotifySyncMs={spotifySyncMs} onSpotifySyncChange={updateSpotifySync}
                 visual={visual} presets={presets} onVisualChange={updateVisual} onSavePreset={savePreset}

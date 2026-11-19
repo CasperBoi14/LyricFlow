@@ -16,7 +16,7 @@ type Props = {
   spotifyConnecting: boolean
   spotifyError: string | null
   spotifyDeviceName?: string
-  onSpotifyConnect: (clientId?: string, mode?: 'app' | 'web') => void
+  onSpotifyConnect: (clientId?: string) => void
   onSpotifyDisconnect: () => void
   onDismissSpotifyError: () => void
   onSpotifyTransferred: () => void
