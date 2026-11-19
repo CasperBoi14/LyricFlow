@@ -17,7 +17,6 @@ type Props = {
 }
 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
-const DELAY_LIMIT = 3000
 
 export function FullscreenLyrics({ track, currentTime, duration, playing, delayMs, onDelayChange, browserFullscreen, onEnterBrowserFullscreen, onClose, onTogglePlay, onSeek }: Props) {
   const t = lyricTime(currentTime, delayMs)
@@ -52,8 +51,6 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
 
   if (!track) return null
 
-  const delay = (delta: number) => onDelayChange(clamp(delayMs + delta, -DELAY_LIMIT, DELAY_LIMIT))
-
   return (
     <div className="stage">
       <div className="stage-art" key={track.id} style={track.cover?.startsWith('http') ? { backgroundImage: `url(${track.cover})` } : { background: track.cover }} />
@@ -61,13 +58,12 @@ export function FullscreenLyrics({ track, currentTime, duration, playing, delayM
 
       <header className="stage-top">
         <div className="stage-controls">
-          <div className="stage-delay" title="Adjust when each word appears in 100 ms steps">
-            <button onClick={() => delay(-100)} aria-label="Show words 100 milliseconds earlier">−</button>
-            <button className="stage-delay-value" onClick={() => onDelayChange(0)} title="Reset lyric delay">
-              {delayMs > 0 ? '+' : ''}{delayMs} ms
-            </button>
-            <button onClick={() => delay(100)} aria-label="Show words 100 milliseconds later">+</button>
-          </div>
+          <label className="stage-delay">
+            <span>Timing</span>
+            <input type="range" min={-3000} max={3000} step={100} value={delayMs}
+              onChange={(event) => onDelayChange(Number(event.target.value))} aria-label="Lyric timing delay in milliseconds" />
+            <output>{delayMs > 0 ? '+' : ''}{delayMs} ms</output>
+          </label>
           {!browserFullscreen && document.fullscreenEnabled && (
             <button className="stage-fill-screen" onClick={onEnterBrowserFullscreen}>Fill screen</button>
           )}

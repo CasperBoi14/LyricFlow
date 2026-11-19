@@ -62,6 +62,7 @@ function sameSong(match: LiveMatch, track: Track): boolean {
 
 const VIEW_META: Record<AppView, { title: string; subtitle: string }> = {
   search: { title: 'Search', subtitle: '' },
+  lyrics: { title: 'Lyrics', subtitle: 'Follow the current song line by line' },
   identify: { title: 'Identify', subtitle: 'Live microphone recognition and lyric health' },
   library: { title: 'Library', subtitle: 'Your playlists and Spotify' },
   settings: { title: 'Settings', subtitle: 'Playback and lyrics' },
@@ -95,6 +96,22 @@ function LibraryIcon() {
   )
 }
 
+function LyricsIcon() {
+  return (
+    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+      <path d="M5 6h14M5 11h14M5 16h10M5 21h7" />
+    </svg>
+  )
+}
+
+function MoreIcon() {
+  return (
+    <svg className="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" />
+    </svg>
+  )
+}
+
 function SettingsIcon() {
   return (
     <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
@@ -107,6 +124,8 @@ function SettingsIcon() {
 
 export default function App() {
   const [view, setView] = useState<AppView>('search')
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 640px)').matches)
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const [catalog, setCatalog] = useState<Track[]>(loadSavedTracks)
   const [recentIds, setRecentIds] = useState<string[]>(loadRecentTrackIds)
   const [selectedId, setSelectedId] = useState<string>(() => {
@@ -148,6 +167,19 @@ export default function App() {
   const remoteVolumeTimer = useRef(0)
   useEffect(() => () => window.clearTimeout(remoteVolumeTimer.current), [])
   const live = useLiveIdentify()
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 640px)')
+    const onChange = () => {
+      setIsMobile(media.matches)
+      if (!media.matches) {
+        setMobileMoreOpen(false)
+        setView((current) => current === 'lyrics' ? 'search' : current)
+      }
+    }
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [])
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -436,13 +468,13 @@ export default function App() {
       pendingRef.current = null
       seek(startAt)
       setPlaying(true)
-      if (autoFullscreen) setFullscreen(true)
+      if (autoFullscreen && !isMobile) setFullscreen(true)
       return
     }
     pendingRef.current = { startAt, play: true }
     setTime(0)
     setSelectedId(t.id)
-    if (autoFullscreen) setFullscreen(true)
+    if (autoFullscreen && !isMobile) setFullscreen(true)
   }
 
   const currentIndex = catalog.findIndex((t) => t.id === selectedId)
@@ -617,6 +649,11 @@ export default function App() {
   }, [live.matches, selected])
 
   const meta = VIEW_META[view]
+  const chooseMobileView = (next: AppView) => {
+    setView(next)
+    setMobileMoreOpen(false)
+    window.scrollTo(0, 0)
+  }
 
   return (
     <div className={`app theme-${visual.background} font-${visual.font} align-${visual.align} position-${visual.position} highlight-${visual.highlight} word-${visual.wordAnimation}${visual.animations ? '' : ' no-motion'}`} style={appStyle}>
@@ -657,7 +694,7 @@ export default function App() {
           </div>
         </aside>
 
-        <main className="panel main">
+        <main className={`panel main${isMobile && view === 'lyrics' ? ' main-lyrics-mobile' : ''}`}>
           <div className="main-header">
             <div>
               <h1>{meta.title}</h1>
@@ -666,13 +703,24 @@ export default function App() {
             {spotifyReady && <span className="spotify-chip"><span className="spotify-dot" aria-hidden="true" />{remotePlayback ? `Following ${remotePlayback.deviceName}` : 'Spotify connected'}</span>}
           </div>
           <div className="main-body">
+            {isMobile && (syncError || audioError || playbackNotice) && (
+              <div className="mobile-notices">
+                {syncError && <div className="notice error">{syncError}</div>}
+                {audioError && <div className="notice error">{audioError}</div>}
+                {playbackNotice && <div className="notice">{playbackNotice}</div>}
+              </div>
+            )}
             <div className="view-enter" key={view}>
-            {view === 'identify' ? (
+            {view === 'lyrics' ? (
+              <div className="mobile-lyrics-panel">
+                <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={openFullscreen} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
+              </div>
+            ) : view === 'identify' ? (
               <IdentifyView live={live} currentTrack={selected} health={liveHealth} onOpen={openTrack} />
             ) : view === 'search' ? (
               <SearchView onOpen={openTrack} recentTracks={recentIds.map((id) => catalog.find((track) => track.id === id)).filter((track): track is Track => !!track)} />
             ) : view === 'settings' ? (
-              <SettingsView volume={volume} onVolumeChange={updateVolume} delayMs={delayMs} onDelayChange={updateDelay}
+              <SettingsView isMobile={isMobile} volume={volume} onVolumeChange={updateVolume} delayMs={delayMs} onDelayChange={updateDelay}
                 lyricSize={lyricSize} onLyricSizeChange={updateLyricSize}
                 autoFullscreen={autoFullscreen} onAutoFullscreenChange={updateAutoFullscreen}
                 spotifyConnected={spotifyReady} spotifyConnecting={connectingSpotify} spotifyError={spotifyError}
@@ -706,7 +754,7 @@ export default function App() {
           </div>
         </main>
 
-        <aside className="panel rightbar">
+        <aside className={`panel rightbar${isMobile && view === 'settings' ? ' mobile-settings' : ''}`}>
           {syncError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{syncError} {!syncError.startsWith('Spotify returned 429') && <button className="link" onClick={() => setView('settings')}>Connection settings</button>}</div>}
           {audioError && <div className="notice error" style={{ margin: '4px 10px 0' }}>{audioError}</div>}
           {playbackNotice && <div className="notice" style={{ margin: '4px 10px 0' }}>{playbackNotice}</div>}
@@ -716,7 +764,7 @@ export default function App() {
             </div>
           )}
           {!hasBackend && <ProviderSetup onSaved={onProvidersSaved} />}
-          <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={openFullscreen} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />
+          {!isMobile && <LyricsView track={selected} currentTime={time} duration={playbackDuration} delayMs={delayMs} onOpenFullscreen={openFullscreen} playlists={playlists} onAdd={addToPlaylist} onCreate={onCreatePlaylist} />}
           <SoundPanel source={playbackSource} track={selected} remoteDevice={remotePlayback?.deviceName} remoteDeviceType={remotePlayback?.deviceType}
             volume={volume} position={time} duration={playbackDuration} playing={playing} onVolumeChange={updateVolume} onRefresh={refreshSpotifyPlayback} />
         </aside>
@@ -744,19 +792,37 @@ export default function App() {
           </div>
         </div>
         <div className="extras">
-          <div className="delay-control" title="Adjust when each word appears in 100 ms steps">
-            <span className="muted small">Words</span>
-            <button className="icon-btn tiny" onClick={() => updateDelay(delayMs - 100)} aria-label="Show words 100 milliseconds earlier">−</button>
-            <button className="delay-value" onClick={() => updateDelay(0)} title="Reset word timing" aria-live="polite">
-              {delayMs > 0 ? '+' : ''}{delayMs} ms
-            </button>
-            <button className="icon-btn tiny" onClick={() => updateDelay(delayMs + 100)} aria-label="Show words 100 milliseconds later">+</button>
-          </div>
+          <label className="delay-control">
+            <span>Timing</span>
+            <input type="range" min={-3000} max={3000} step={100} value={delayMs}
+              onChange={(event) => updateDelay(Number(event.target.value))} aria-label="Lyric timing delay in milliseconds" />
+            <output>{delayMs > 0 ? '+' : ''}{delayMs} ms</output>
+          </label>
           <button className="btn" onClick={openFullscreen} disabled={!selected}>Fullscreen</button>
         </div>
       </footer>
 
-      {visual.widget && selected && !fullscreen && !screensaver && <FloatingLyricsWidget track={selected} time={time} delayMs={delayMs}
+      <div className="mobile-nav-wrap" inert={fullscreen} aria-hidden={fullscreen}>
+        {mobileMoreOpen && (
+          <>
+            <button className="mobile-more-backdrop" onClick={() => setMobileMoreOpen(false)} aria-label="Close more menu" />
+            <div className="mobile-more-menu" id="mobile-more-menu">
+              <button onClick={() => chooseMobileView('settings')}><SettingsIcon /> Settings</button>
+              <button onClick={() => chooseMobileView('dna')}>Music DNA</button>
+              <button onClick={() => chooseMobileView('timeline')}>Timeline</button>
+            </div>
+          </>
+        )}
+        <nav className="mobile-nav" aria-label="Mobile navigation">
+          <button className={view === 'search' ? 'active' : ''} onClick={() => chooseMobileView('search')}><SearchIcon /><span>Search</span></button>
+          <button className={view === 'library' ? 'active' : ''} onClick={() => chooseMobileView('library')}><LibraryIcon /><span>Library</span></button>
+          <button className={view === 'lyrics' ? 'active' : ''} onClick={() => chooseMobileView('lyrics')}><LyricsIcon /><span>Lyrics</span></button>
+          <button className={view === 'identify' ? 'active' : ''} onClick={() => chooseMobileView('identify')}><IdentifyIcon /><span>Identify</span></button>
+          <button className={['settings', 'dna', 'timeline'].includes(view) ? 'active' : ''} onClick={() => setMobileMoreOpen((open) => !open)} aria-expanded={mobileMoreOpen} aria-controls="mobile-more-menu"><MoreIcon /><span>More</span></button>
+        </nav>
+      </div>
+
+      {visual.widget && !isMobile && selected && !fullscreen && !screensaver && <FloatingLyricsWidget track={selected} time={time} delayMs={delayMs}
         playing={playing} position={visual.widgetPosition} onTogglePlay={togglePlayback} onNext={next} onPrevious={prev}
         onOpenFull={openFullscreen} onClose={() => updateVisual({ widget: false })} />}
 

@@ -28,9 +28,14 @@ export function LyricsView({ track, currentTime, duration, delayMs, onOpenFullsc
   const activeWord = wordIndexAt(activeWords, t)
 
   useEffect(() => {
-    if (activeRef.current && containerRef.current) {
-      activeRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    }
+    const container = containerRef.current
+    const active = activeRef.current
+    if (!container || !active) return
+    const distance = active.getBoundingClientRect().top - container.getBoundingClientRect().top
+    container.scrollTo({
+      top: container.scrollTop + distance - (container.clientHeight - active.clientHeight) / 2,
+      behavior: 'smooth',
+    })
   }, [activeIndex, track?.id])
 
   if (!track) return <div className="lyrics-empty">

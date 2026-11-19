@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './redesign.css'
+import './mobile.css'
 import App from './App.tsx'
 
 // Spotify no longer accepts `localhost` as a redirect URI (HTTPS or a loopback IP such as

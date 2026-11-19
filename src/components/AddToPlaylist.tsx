@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import type { Track } from '../types'
 import type { Playlist } from '../lib/playlists'
 
@@ -15,13 +16,46 @@ export function AddToPlaylist({ playlists, track, onAdd, onCreate, placement = '
   const [name, setName] = useState('')
   const [added, setAdded] = useState<string | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const timerRef = useRef<number | null>(null)
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({})
+
+  const positionMenu = useCallback(() => {
+    const trigger = wrapRef.current
+    if (!trigger) return
+    if (window.innerWidth <= 640) {
+      setMenuStyle({ position: 'fixed', top: 'auto', left: 8, right: 8,
+        bottom: 'calc(64px + 112px + env(safe-area-inset-bottom))', width: 'auto',
+        maxHeight: 'min(50dvh, 330px)', overflowY: 'auto' })
+      return
+    }
+    const rect = trigger.getBoundingClientRect()
+    const width = Math.min(280, window.innerWidth - 16)
+    const below = window.innerHeight - rect.bottom - 12
+    const above = rect.top - 12
+    const down = placement === 'down' ? below >= 220 || below >= above : below > above && above < 220
+    const available = down ? below : above
+    const maxHeight = Math.max(140, Math.min(350, available - 8))
+    setMenuStyle({ position: 'fixed', top: down ? rect.bottom + 8 : Math.max(8, rect.top - maxHeight - 8),
+      left: Math.max(8, Math.min(window.innerWidth - width - 8, rect.right - width)),
+      right: 'auto', bottom: 'auto', width, maxHeight, overflowY: 'auto' })
+  }, [placement])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    window.addEventListener('resize', positionMenu)
+    window.addEventListener('scroll', positionMenu, true)
+    return () => {
+      window.removeEventListener('resize', positionMenu)
+      window.removeEventListener('scroll', positionMenu, true)
+    }
+  }, [open, positionMenu])
 
   useEffect(() => {
     if (!open) return
     const onPointerDown = (e: PointerEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+      if (!wrapRef.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) setOpen(false)
     }
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
@@ -65,7 +99,7 @@ export function AddToPlaylist({ playlists, track, onAdd, onCreate, placement = '
     <div className="add-wrap" ref={wrapRef}>
       <button
         className={`btn add-btn ${open ? 'active' : ''}`}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { if (!open) positionMenu(); setOpen((current) => !current) }}
         disabled={!track}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -74,8 +108,8 @@ export function AddToPlaylist({ playlists, track, onAdd, onCreate, placement = '
         {added ? '✓ Added' : '+ Playlist'}
       </button>
 
-      {open && (
-        <div className={`add-menu ${placement}`} role="menu" aria-label="Add to playlist">
+      {open && createPortal(
+        <div className={`add-menu ${placement}`} ref={menuRef} style={menuStyle} role="menu" aria-label="Add to playlist">
           <div className="add-menu-head">
             Add <span>{track?.title}</span>
           </div>
@@ -114,7 +148,7 @@ export function AddToPlaylist({ playlists, track, onAdd, onCreate, placement = '
             />
             <button className="btn small primary" onClick={create} disabled={!name.trim()}>Create</button>
           </div>
-        </div>
+        </div>, document.body
       )}
     </div>
   )

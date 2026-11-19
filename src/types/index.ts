@@ -28,7 +28,7 @@ export type Track = {
   instrumental?: boolean
 }
 
-export type AppView = 'library' | 'identify' | 'search' | 'settings' | 'dna' | 'timeline'
+export type AppView = 'library' | 'identify' | 'search' | 'lyrics' | 'settings' | 'dna' | 'timeline'
 
 export type SearchResult = {
   id: string
