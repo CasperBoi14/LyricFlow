@@ -1,9 +1,13 @@
 import type { Ref } from 'react'
 import type { FullscreenStyle } from '../types'
+import type { DynamicSettings } from '../lib/dynamicSettings'
+import { DynamicControls } from './DynamicControls'
 
 type Props = {
   dialogRef: Ref<HTMLDialogElement>
   fullscreenStyle: FullscreenStyle
+  dynamicSettings: DynamicSettings
+  onDynamicSettingsChange: (patch: Partial<DynamicSettings>) => void
   canFillScreen: boolean
   playing: boolean
   onStyleChange: (style: FullscreenStyle) => void
@@ -13,7 +17,7 @@ type Props = {
   onClose: () => void
 }
 
-export function SettingsDialog({ dialogRef, fullscreenStyle, canFillScreen, playing, onStyleChange, onTogglePlay, onExitFullscreen, onFillScreen, onClose }: Props) {
+export function SettingsDialog({ dialogRef, fullscreenStyle, dynamicSettings, onDynamicSettingsChange, canFillScreen, playing, onStyleChange, onTogglePlay, onExitFullscreen, onFillScreen, onClose }: Props) {
   return (
     <dialog
       ref={dialogRef}
@@ -32,9 +36,10 @@ export function SettingsDialog({ dialogRef, fullscreenStyle, canFillScreen, play
           </label>
           <label className="settings-option">
             <input type="radio" name="fullscreenStyle" checked={fullscreenStyle === 'dynamic'} onChange={() => onStyleChange('dynamic')} />
-            <span><strong>Dynamic</strong><small>Large animated lyrics on a dark, amber-lit stage.</small></span>
+            <span><strong>Dynamic</strong><small>One large word at a time, with faded words flowing past.</small></span>
           </label>
         </fieldset>
+        {fullscreenStyle === 'dynamic' && <DynamicControls value={dynamicSettings} onChange={onDynamicSettingsChange} />}
         <p className="settings-help">
           Press <kbd>S</kbd> for settings in fullscreen. In Dynamic, you can also tap the stage.
           Use <kbd>Space</kbd> to pause or resume, <kbd>←</kbd> or <kbd>→</kbd> to seek, and <kbd>Esc</kbd> to exit.

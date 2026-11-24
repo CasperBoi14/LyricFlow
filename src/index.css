@@ -651,3 +651,20 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
 .settings-help kbd { color: var(--text); font-weight: 600; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-actions .primary { margin-left: auto; }
+
+.dynamic-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  min-width: 0;
+}
+.settings-dialog .dynamic-controls { margin-top: 14px; }
+.dynamic-controls legend { padding: 0 4px; font-size: 13px; font-weight: 700; }
+.dynamic-controls .select { min-width: 0; width: 100%; }
+.dynamic-color { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 13px; }
+.dynamic-color input { width: 36px; height: 30px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--panel-2); cursor: pointer; }
+.dynamic-controls button { justify-self: start; grid-column: 1 / -1; }

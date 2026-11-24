@@ -7,6 +7,7 @@ import { LibraryView } from './components/LibraryView'
 import { FullscreenLyrics } from './components/FullscreenLyrics'
 import { DynamicFullscreenVisualizer } from './components/DynamicFullscreenVisualizer'
 import { SettingsDialog } from './components/SettingsDialog'
+import { loadDynamicSettings, saveDynamicSettings, type DynamicSettings } from './lib/dynamicSettings'
 import { ProviderSetup } from './components/ProviderSetup'
 import type { AppView, FullscreenLyricsMode, FullscreenStyle, Track } from './types'
 import { formatTime } from './lib/lyrics'
@@ -140,6 +141,7 @@ export default function App() {
   const [fullscreen, setFullscreen] = useState(false)
   const [fullscreenStyle, setFullscreenStyle] = useState<FullscreenStyle>(() =>
     localStorage.getItem(FULLSCREEN_STYLE_KEY) === 'dynamic' ? 'dynamic' : 'classic')
+  const [dynamicSettings, setDynamicSettings] = useState(loadDynamicSettings)
   const [browserFullscreen, setBrowserFullscreen] = useState(false)
   const browserFullscreenRequested = useRef(false)
   const fullscreenSettingsRef = useRef<HTMLDialogElement>(null)
@@ -272,6 +274,7 @@ export default function App() {
   useEffect(() => { saveSavedTracks(catalog) }, [catalog])
   useEffect(() => { saveRecentTrackIds(recentIds) }, [recentIds])
   useEffect(() => { saveVisualSettings(visual) }, [visual])
+  useEffect(() => { saveDynamicSettings(dynamicSettings) }, [dynamicSettings])
   useEffect(() => { saveVisualPresets(presets) }, [presets])
   useEffect(() => { saveListeningHistory(history) }, [history])
 
@@ -614,6 +617,9 @@ export default function App() {
     setFullscreenStyle(value)
     try { localStorage.setItem(FULLSCREEN_STYLE_KEY, value) } catch { /* keep the current session usable */ }
   }
+  const updateDynamicSettings = (patch: Partial<DynamicSettings>) => {
+    setDynamicSettings((current) => ({ ...current, ...patch }))
+  }
   const updateSpotifySync = (value: number) => {
     setSpotifySyncMs(value)
     localStorage.setItem('lf-spotify-sync-ms', String(value))
@@ -788,6 +794,7 @@ export default function App() {
               <SettingsView isMobile={isMobile} volume={volume} onVolumeChange={updateVolume} delayMs={delayMs} onDelayChange={updateDelay}
                 lyricSize={lyricSize} onLyricSizeChange={updateLyricSize}
                 fullscreenStyle={fullscreenStyle} onFullscreenStyleChange={updateFullscreenStyle}
+                dynamicSettings={dynamicSettings} onDynamicSettingsChange={updateDynamicSettings}
                 fullscreenLyricsMode={fullscreenLyricsMode} onFullscreenLyricsModeChange={updateFullscreenLyricsMode}
                 autoFullscreen={autoFullscreen} onAutoFullscreenChange={updateAutoFullscreen}
                 spotifyConnected={spotifyReady} spotifyConnecting={connectingSpotify} spotifyError={spotifyError}
@@ -904,6 +911,7 @@ export default function App() {
             duration={playbackDuration}
             playing={playing}
             delayMs={delayMs}
+            settings={dynamicSettings}
             onOpenSettings={openFullscreenSettings}
           /> : <FullscreenLyrics
             track={selected}
@@ -923,6 +931,8 @@ export default function App() {
           <SettingsDialog
             dialogRef={fullscreenSettingsRef}
             fullscreenStyle={fullscreenStyle}
+            dynamicSettings={dynamicSettings}
+            onDynamicSettingsChange={updateDynamicSettings}
             canFillScreen={!browserFullscreen && canUseBrowserFullscreen()}
             playing={playing}
             onStyleChange={updateFullscreenStyle}

@@ -5,7 +5,7 @@
   isolation: isolate;
   overflow: hidden;
   background: #0c0707;
-  color: #ff270e;
+  color: var(--word-color);
 }
 
 .dynamic-stage:focus {
@@ -16,10 +16,9 @@
   position: absolute;
   inset: -9%;
   background:
-    radial-gradient(ellipse 47% 56% at 1% 88%, #aa3916 0%, #742611 26%, #32130d 54%, transparent 86%),
-    radial-gradient(ellipse 57% 46% at 99% 14%, #a85525 0%, #743512 25%, #32170c 54%, transparent 83%),
-    radial-gradient(ellipse 51% 32% at 62% 105%, #562810 0%, transparent 88%),
-    radial-gradient(ellipse 62% 69% at 56% 53%, #1d0c0b 0%, transparent 82%);
+    radial-gradient(ellipse 55% 62% at 0% 87%, color-mix(in srgb, var(--light-color) 65%, #180704), transparent 84%),
+    radial-gradient(ellipse 60% 54% at 100% 12%, color-mix(in srgb, var(--light-color) 58%, #100409), transparent 81%),
+    radial-gradient(ellipse 44% 45% at 52% 110%, color-mix(in srgb, var(--light-color) 29%, #090508), transparent 90%);
   animation: dynamic-drift 23s ease-in-out infinite alternate paused;
 }
 
@@ -56,7 +55,7 @@
 .dynamic-lyrics {
   position: absolute;
   z-index: 3;
-  inset: 14% 6%;
+  inset: 0 4%;
   display: grid;
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   align-items: center;
@@ -66,58 +65,25 @@
   text-transform: uppercase;
 }
 
-.dynamic-cue {
-  --reveal-progress: var(--intro);
+.dynamic-word-slot {
   grid-area: 1 / 1;
-  position: relative;
-  width: 100%;
-  left: var(--cue-x);
-  top: var(--cue-y);
-  margin: 0;
-  padding-block: .12em;
-  letter-spacing: -.043em;
-  word-spacing: .045em;
-  text-wrap: balance;
-  text-shadow: 0 .016em .09em #ff350c27;
+  display: grid;
+  place-items: center;
   opacity: var(--opacity);
-  transform: translateY(var(--lift)) scale(var(--scale));
+  transform: var(--position);
+  color: color-mix(in srgb, var(--word-color) 56%, white);
 }
 
-.dynamic-lyrics:not([data-overlap]) .dynamic-cue[aria-hidden='true'] {
-  visibility: hidden;
+.dynamic-word-slot.is-current { z-index: 1; color: var(--word-color); }
+.dynamic-word {
+  display: block;
+  inline-size: max-content;
+  white-space: nowrap;
+  letter-spacing: -.045em;
 }
-
-.dynamic-lyrics[data-settled] .dynamic-cue:not([aria-hidden]) {
-  --reveal-progress: 1;
-  opacity: 1;
-  transform: none;
-}
-
-.dynamic-token {
-  display: inline-block;
-}
-
-.dynamic-cue:not(.has-word-timing) .dynamic-token {
-  --reveal: clamp(0, (var(--reveal-progress) - var(--stagger)) * 1.65, 1);
-  opacity: calc(.24 + .76 * var(--reveal));
-  transform: translateY(calc((1 - var(--reveal)) * .075em));
-}
-
-.dynamic-cue.has-word-timing .dynamic-token {
-  color: #dc3521;
-}
-
-.dynamic-cue.has-word-timing .is-sung {
-  color: inherit;
-}
-
-.dynamic-cue.has-word-timing .is-current {
-  color: #ff733b;
-  transform: translateY(-.025em) scale(1.035);
-}
-
-.dynamic-stage.is-playing .has-word-timing .dynamic-token {
-  transition: color 105ms ease-out, transform 140ms cubic-bezier(.2, .75, .2, 1);
+.dynamic-word-slot.is-current .dynamic-word {
+  text-shadow: var(--burst) 0 color-mix(in srgb, var(--light-color) 57%, transparent),
+    calc(0px - var(--burst)) 0 color-mix(in srgb, var(--word-color) 45%, transparent);
 }
 
 .dynamic-settings-trigger {
@@ -134,15 +100,17 @@
 }
 
 .app.no-motion .dynamic-ambient { animation: none; }
-.app.no-motion .dynamic-cue, .app.no-motion .dynamic-cue:not(.has-word-timing) .dynamic-token { opacity: 1; transform: none; }
-.app.no-motion .dynamic-cue[aria-hidden='true'] { visibility: hidden; }
-.app.no-motion .dynamic-cue.has-word-timing .is-current { transform: none; }
-.app.no-motion .dynamic-stage.is-playing .has-word-timing .dynamic-token { transition: none; }
+.app.no-motion .dynamic-word-slot {
+  opacity: var(--rest-opacity);
+  transform: var(--rest-position);
+}
+.app.no-motion .dynamic-word-slot.is-current .dynamic-word { text-shadow: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .dynamic-ambient { animation: none; }
-  .dynamic-cue, .dynamic-cue:not(.has-word-timing) .dynamic-token { opacity: 1; transform: none; }
-  .dynamic-cue[aria-hidden='true'] { visibility: hidden; }
-  .dynamic-cue.has-word-timing .is-current { transform: none; }
-  .dynamic-stage.is-playing .has-word-timing .dynamic-token { transition: none; }
+  .dynamic-word-slot {
+    opacity: var(--rest-opacity);
+    transform: var(--rest-position);
+  }
+  .dynamic-word-slot.is-current .dynamic-word { text-shadow: none; }
 }

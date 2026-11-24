@@ -1,5 +1,7 @@
 import { SpotifyAccountSettings } from './SpotifyAccountSettings'
 import { ThemeStudio } from './ThemeStudio'
+import { DynamicControls } from './DynamicControls'
+import type { DynamicSettings } from '../lib/dynamicSettings'
 import type { VisualPreset, VisualSettings } from '../lib/visualSettings'
 import type { FullscreenLyricsMode, FullscreenStyle } from '../types'
 
@@ -13,6 +15,8 @@ type Props = {
   onLyricSizeChange: (value: number) => void
   fullscreenStyle: FullscreenStyle
   onFullscreenStyleChange: (value: FullscreenStyle) => void
+  dynamicSettings: DynamicSettings
+  onDynamicSettingsChange: (patch: Partial<DynamicSettings>) => void
   fullscreenLyricsMode: FullscreenLyricsMode
   onFullscreenLyricsModeChange: (value: FullscreenLyricsMode) => void
   autoFullscreen: boolean
@@ -80,6 +84,7 @@ export function SettingsView(props: Props) {
           </select>
         </label>
         <p className="muted small">Press S for settings in fullscreen. Tap the Dynamic stage to open settings on a touchscreen.</p>
+        {props.fullscreenStyle === 'dynamic' && <DynamicControls value={props.dynamicSettings} onChange={props.onDynamicSettingsChange} />}
         <label className="settings-slider">
           <span>Fullscreen lyrics display</span>
           <select className="select" value={props.fullscreenLyricsMode} onChange={(event) => props.onFullscreenLyricsModeChange(event.target.value as FullscreenLyricsMode)}>
