@@ -17,6 +17,7 @@ type Options = {
   spotifyReady: boolean
   externalPlayback?: boolean
   holdPlayback?: boolean
+  highResolutionTime: boolean
   volume: number
   onSource: (source: string) => void
   onTime: (time: number) => void
@@ -101,10 +102,11 @@ export function useAudioEngine(opts: Options) {
       const audio = new Audio(audioUrl)
       audioRef.current = audio
       audio.volume = cb.current.volume / 100
-      audio.onloadedmetadata = () => { if (audioRef.current === audio) cb.current.onDuration(Number.isFinite(audio.duration) ? audio.duration : 0) }
-      audio.ontimeupdate = () => { if (audioRef.current === audio) cb.current.onTime(audio.currentTime) }
-      audio.onended = () => { if (audioRef.current === audio) { cb.current.onPlayingChange(false); cb.current.onEnded() } }
-      audio.onerror = () => { if (audioRef.current === audio) { cb.current.onError('Audio source unavailable.'); cb.current.onPlayingChange(false) } }
+      const isCurrent = () => audioRef.current === audio && sourceKey.current === key
+      audio.onloadedmetadata = () => { if (isCurrent()) cb.current.onDuration(Number.isFinite(audio.duration) ? audio.duration : 0) }
+      audio.ontimeupdate = () => { if (isCurrent()) cb.current.onTime(audio.currentTime) }
+      audio.onended = () => { if (isCurrent()) { cb.current.onPlayingChange(false); cb.current.onEnded() } }
+      audio.onerror = () => { if (isCurrent()) { cb.current.onError('Audio source unavailable.'); cb.current.onPlayingChange(false) } }
       audio.load()
       if (playingRef.current) void audio.play().catch(() => {
         cb.current.onPlayingChange(false)
@@ -157,6 +159,7 @@ export function useAudioEngine(opts: Options) {
       const dt = Math.min(.5, Math.max(0, (now - last) / 1000))
       last = now
       const activeKey = sourceKey.current
+      const audio = audioRef.current
       if (activeKey.startsWith('spotify:')) {
         if (now - spotifyLastPoll.current > 900) { spotifyLastPoll.current = now; refreshSpotifyState() }
         const state = getSpotifySnapshot()
@@ -170,6 +173,8 @@ export function useAudioEngine(opts: Options) {
             cb.current.onEnded()
           }
         }
+      } else if (activeKey.startsWith('audio:') && cb.current.highResolutionTime && audio && !audio.paused && !audio.seeking) {
+        cb.current.onTime(audio.currentTime)
       } else if (activeKey.startsWith('demo:') && playingRef.current) {
         demoTime.current += dt
         const duration = cb.current.track?.duration || 0

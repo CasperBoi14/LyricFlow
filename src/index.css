@@ -616,3 +616,38 @@ code { background: rgba(255,255,255,.06); padding: 3px 7px; border-radius: 6px; 
   .track-card:hover { transform: none; }
   .line-progress i { transition: none; }
 }
+
+.settings-dialog:not([open]) { display: none; }
+.settings-dialog {
+  width: min(430px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+  padding: 22px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 16px 64px #0009;
+}
+.settings-dialog::backdrop { background: #07080ca8; }
+.settings-dialog h2 { margin: 0 0 18px; font-size: 20px; letter-spacing: -.025em; }
+.settings-styles { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.settings-styles legend { margin: 0 0 10px; padding: 0; font-size: 13px; font-weight: 700; }
+.settings-option {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  cursor: pointer;
+}
+.settings-option:has(:checked) { border-color: #9db0ff80; }
+.settings-option input { margin: 0; accent-color: var(--accent); }
+.settings-option span { display: grid; gap: 2px; }
+.settings-option strong { font-size: 13px; }
+.settings-option small, .settings-help { color: var(--soft); font-size: 12px; }
+.settings-help { margin: 14px 0 18px; }
+.settings-help kbd { color: var(--text); font-weight: 600; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-actions .primary { margin-left: auto; }

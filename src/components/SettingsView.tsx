@@ -1,7 +1,7 @@
 import { SpotifyAccountSettings } from './SpotifyAccountSettings'
 import { ThemeStudio } from './ThemeStudio'
 import type { VisualPreset, VisualSettings } from '../lib/visualSettings'
-import type { FullscreenLyricsMode } from '../types'
+import type { FullscreenLyricsMode, FullscreenStyle } from '../types'
 
 type Props = {
   isMobile: boolean
@@ -11,6 +11,8 @@ type Props = {
   onDelayChange: (value: number) => void
   lyricSize: number
   onLyricSizeChange: (value: number) => void
+  fullscreenStyle: FullscreenStyle
+  onFullscreenStyleChange: (value: FullscreenStyle) => void
   fullscreenLyricsMode: FullscreenLyricsMode
   onFullscreenLyricsModeChange: (value: FullscreenLyricsMode) => void
   autoFullscreen: boolean
@@ -70,6 +72,14 @@ export function SettingsView(props: Props) {
       </section>
       <section className="settings-card">
         <h2>Lyrics</h2>
+        <label className="settings-slider">
+          <span>Fullscreen Visualisation Style</span>
+          <select className="select" value={props.fullscreenStyle} onChange={(event) => props.onFullscreenStyleChange(event.target.value as FullscreenStyle)}>
+            <option value="classic">Classic</option>
+            <option value="dynamic">Dynamic</option>
+          </select>
+        </label>
+        <p className="muted small">Press S for settings in fullscreen. Tap the Dynamic stage to open settings on a touchscreen.</p>
         <label className="settings-slider">
           <span>Fullscreen lyrics display</span>
           <select className="select" value={props.fullscreenLyricsMode} onChange={(event) => props.onFullscreenLyricsModeChange(event.target.value as FullscreenLyricsMode)}>

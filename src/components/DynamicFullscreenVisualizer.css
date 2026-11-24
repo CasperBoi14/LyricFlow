@@ -1,0 +1,148 @@
+.dynamic-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  isolation: isolate;
+  overflow: hidden;
+  background: #0c0707;
+  color: #ff270e;
+}
+
+.dynamic-stage:focus {
+  outline: none;
+}
+
+.dynamic-ambient {
+  position: absolute;
+  inset: -9%;
+  background:
+    radial-gradient(ellipse 47% 56% at 1% 88%, #aa3916 0%, #742611 26%, #32130d 54%, transparent 86%),
+    radial-gradient(ellipse 57% 46% at 99% 14%, #a85525 0%, #743512 25%, #32170c 54%, transparent 83%),
+    radial-gradient(ellipse 51% 32% at 62% 105%, #562810 0%, transparent 88%),
+    radial-gradient(ellipse 62% 69% at 56% 53%, #1d0c0b 0%, transparent 82%);
+  animation: dynamic-drift 23s ease-in-out infinite alternate paused;
+}
+
+.dynamic-stage.is-playing .dynamic-ambient {
+  animation-play-state: running;
+}
+
+@keyframes dynamic-drift {
+  from { transform: translate3d(-1.5%, 1%, 0) scale(1.01); }
+  to { transform: translate3d(2%, -2%, 0) scale(1.08); }
+}
+
+.dynamic-grain,
+.dynamic-stage::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dynamic-stage::before {
+  content: '';
+  z-index: 1;
+  background:
+    radial-gradient(ellipse 74% 82% at 50% 49%, transparent 43%, #060304bb 100%),
+    linear-gradient(180deg, #08040540 0%, transparent 32%, transparent 70%, #08040550 100%);
+}
+
+.dynamic-grain {
+  z-index: 2;
+  opacity: .2;
+  background-size: 192px 192px;
+}
+
+.dynamic-lyrics {
+  position: absolute;
+  z-index: 3;
+  inset: 14% 6%;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  align-items: center;
+  pointer-events: none;
+  font: 900 1rem / .87 'Rubik', 'Arial Black', system-ui, sans-serif;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.dynamic-cue {
+  --reveal-progress: var(--intro);
+  grid-area: 1 / 1;
+  position: relative;
+  width: 100%;
+  left: var(--cue-x);
+  top: var(--cue-y);
+  margin: 0;
+  padding-block: .12em;
+  letter-spacing: -.043em;
+  word-spacing: .045em;
+  text-wrap: balance;
+  text-shadow: 0 .016em .09em #ff350c27;
+  opacity: var(--opacity);
+  transform: translateY(var(--lift)) scale(var(--scale));
+}
+
+.dynamic-lyrics:not([data-overlap]) .dynamic-cue[aria-hidden='true'] {
+  visibility: hidden;
+}
+
+.dynamic-lyrics[data-settled] .dynamic-cue:not([aria-hidden]) {
+  --reveal-progress: 1;
+  opacity: 1;
+  transform: none;
+}
+
+.dynamic-token {
+  display: inline-block;
+}
+
+.dynamic-cue:not(.has-word-timing) .dynamic-token {
+  --reveal: clamp(0, (var(--reveal-progress) - var(--stagger)) * 1.65, 1);
+  opacity: calc(.24 + .76 * var(--reveal));
+  transform: translateY(calc((1 - var(--reveal)) * .075em));
+}
+
+.dynamic-cue.has-word-timing .dynamic-token {
+  color: #dc3521;
+}
+
+.dynamic-cue.has-word-timing .is-sung {
+  color: inherit;
+}
+
+.dynamic-cue.has-word-timing .is-current {
+  color: #ff733b;
+  transform: translateY(-.025em) scale(1.035);
+}
+
+.dynamic-stage.is-playing .has-word-timing .dynamic-token {
+  transition: color 105ms ease-out, transform 140ms cubic-bezier(.2, .75, .2, 1);
+}
+
+.dynamic-settings-trigger {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  padding: 0;
+  touch-action: manipulation;
+}
+
+.dynamic-settings-trigger:focus-visible {
+  outline: 2px solid #ff733b;
+  outline-offset: -6px;
+}
+
+.app.no-motion .dynamic-ambient { animation: none; }
+.app.no-motion .dynamic-cue, .app.no-motion .dynamic-cue:not(.has-word-timing) .dynamic-token { opacity: 1; transform: none; }
+.app.no-motion .dynamic-cue[aria-hidden='true'] { visibility: hidden; }
+.app.no-motion .dynamic-cue.has-word-timing .is-current { transform: none; }
+.app.no-motion .dynamic-stage.is-playing .has-word-timing .dynamic-token { transition: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dynamic-ambient { animation: none; }
+  .dynamic-cue, .dynamic-cue:not(.has-word-timing) .dynamic-token { opacity: 1; transform: none; }
+  .dynamic-cue[aria-hidden='true'] { visibility: hidden; }
+  .dynamic-cue.has-word-timing .is-current { transform: none; }
+  .dynamic-stage.is-playing .has-word-timing .dynamic-token { transition: none; }
+}

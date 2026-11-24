@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import './App.css'
 import { LyricsView } from './components/LyricsView'
 import { IdentifyView } from './components/IdentifyView'
 import { SearchView } from './components/SearchView'
 import { LibraryView } from './components/LibraryView'
 import { FullscreenLyrics } from './components/FullscreenLyrics'
+import { DynamicFullscreenVisualizer } from './components/DynamicFullscreenVisualizer'
+import { SettingsDialog } from './components/SettingsDialog'
 import { ProviderSetup } from './components/ProviderSetup'
-import type { AppView, FullscreenLyricsMode, Track } from './types'
+import type { AppView, FullscreenLyricsMode, FullscreenStyle, Track } from './types'
 import { formatTime } from './lib/lyrics'
 import { findAudioSource, isPreviewAudioUrl } from './lib/audio'
 import { hasBackend } from './lib/api'
@@ -39,6 +41,7 @@ import {
 
 const DELAY_KEY = 'lf-lyric-delay'
 const DELAY_LIMIT = 3000
+const FULLSCREEN_STYLE_KEY = 'lf-fullscreen-style'
 type RemotePlayback = SpotifyActivePlayback & { trackId: string; at: number }
 
 function loadDelayMs(): number {
@@ -135,8 +138,11 @@ export default function App() {
   })
   const [providerVersion, setProviderVersion] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
+  const [fullscreenStyle, setFullscreenStyle] = useState<FullscreenStyle>(() =>
+    localStorage.getItem(FULLSCREEN_STYLE_KEY) === 'dynamic' ? 'dynamic' : 'classic')
   const [browserFullscreen, setBrowserFullscreen] = useState(false)
   const browserFullscreenRequested = useRef(false)
+  const fullscreenSettingsRef = useRef<HTMLDialogElement>(null)
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [audioDuration, setAudioDuration] = useState(0)
@@ -214,6 +220,7 @@ export default function App() {
   }
 
   const closeFullscreen = () => {
+    fullscreenSettingsRef.current?.close?.()
     setFullscreen(false)
     if (browserFullscreenRequested.current && browserFullscreenElement()) {
       void exitBrowserFullscreen().catch(() => {})
@@ -222,6 +229,7 @@ export default function App() {
   }
 
   const selected = useMemo<Track | null>(() => catalog.find((t) => t.id === selectedId) ?? null, [catalog, selectedId])
+  const showDynamic = fullscreen && selected !== null && fullscreenStyle === 'dynamic'
   const atmosphere = useAtmosphere(selected?.cover)
   const pendingRef = useRef<{ startAt: number; play: boolean } | null>(null)
   const catalogRef = useRef(catalog)
@@ -239,6 +247,7 @@ export default function App() {
     spotifyReady,
     externalPlayback: !!remotePlayback,
     holdPlayback: !!pendingSpotify && pendingSpotify === selectedId && !selected?.spotifyUri,
+    highResolutionTime: showDynamic,
     volume,
     onSource: setPlaybackSource,
     onTime: (value) => { if (!remoteRef.current) setTime(value) },
@@ -248,7 +257,7 @@ export default function App() {
     onError: (message) => { if (!remoteRef.current) setAudioError(message) },
   })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     recordedRef.current = null
     const pend = pendingRef.current
     pendingRef.current = null
@@ -355,14 +364,22 @@ export default function App() {
 
   const isFollowing = !!remotePlayback
   useEffect(() => {
-    if (!isFollowing) return
-    const timer = window.setInterval(() => {
+    if (!isFollowing || !playing) return
+    const syncTime = () => {
       const current = remoteRef.current
       if (!current || !current.playing) return
       setTime(Math.min(current.duration || Infinity, current.position + (performance.now() - current.at) / 1000))
-    }, 100)
-    return () => window.clearInterval(timer)
-  }, [isFollowing])
+    }
+    if (!showDynamic) {
+      const timer = window.setInterval(syncTime, 100)
+      return () => window.clearInterval(timer)
+    }
+    let frame = requestAnimationFrame(function tick() {
+      syncTime()
+      frame = requestAnimationFrame(tick)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [isFollowing, playing, showDynamic])
   useEffect(() => {
     if (!selected || !playing || time < 0.5 || recordedRef.current === selected.id) return
     recordedRef.current = selected.id
@@ -593,6 +610,10 @@ export default function App() {
     setFullscreenLyricsMode(value)
     localStorage.setItem('lf-fullscreen-lyrics-mode', value)
   }
+  const updateFullscreenStyle = (value: FullscreenStyle) => {
+    setFullscreenStyle(value)
+    try { localStorage.setItem(FULLSCREEN_STYLE_KEY, value) } catch { /* keep the current session usable */ }
+  }
   const updateSpotifySync = (value: number) => {
     setSpotifySyncMs(value)
     localStorage.setItem('lf-spotify-sync-ms', String(value))
@@ -651,6 +672,39 @@ export default function App() {
     void spotifyFetch(`/me/player/seek?position_ms=${Math.max(0, Math.round(seconds * 1000))}`, { method: 'PUT' })
       .catch((error) => setPlaybackNotice(error?.message || 'Could not seek on Spotify.'))
   }
+
+  const openFullscreenSettings = () => {
+    const dialog = fullscreenSettingsRef.current
+    if (dialog?.showModal) {
+      if (!dialog.open) dialog.showModal()
+    } else {
+      closeFullscreen()
+      setView('settings')
+    }
+  }
+
+  const fullscreenKeys = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || fullscreenSettingsRef.current?.open || event.altKey || event.ctrlKey || event.metaKey) return
+    if (event.key.toLowerCase() === 's' && !event.repeat) {
+      event.preventDefault()
+      openFullscreenSettings()
+    } else if (showDynamic && event.key === 'Escape' && !browserFullscreenElement()) {
+      closeFullscreen()
+    } else if (showDynamic && event.code === 'Space' && !event.repeat && !(event.target instanceof Element && event.target.closest('button'))) {
+      event.preventDefault()
+      togglePlayback()
+    } else if (showDynamic && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      event.preventDefault()
+      const offset = event.key === 'ArrowLeft' ? -5 : 5
+      seekPlayback(Math.min(playbackDuration || Infinity, Math.max(0, time + offset)))
+    }
+  })
+
+  useEffect(() => {
+    if (!fullscreen) return
+    window.addEventListener('keydown', fullscreenKeys)
+    return () => window.removeEventListener('keydown', fullscreenKeys)
+  }, [fullscreen])
 
   const liveHealth = useMemo(() => {
     if (!selected) return null
@@ -733,6 +787,7 @@ export default function App() {
             ) : view === 'settings' ? (
               <SettingsView isMobile={isMobile} volume={volume} onVolumeChange={updateVolume} delayMs={delayMs} onDelayChange={updateDelay}
                 lyricSize={lyricSize} onLyricSizeChange={updateLyricSize}
+                fullscreenStyle={fullscreenStyle} onFullscreenStyleChange={updateFullscreenStyle}
                 fullscreenLyricsMode={fullscreenLyricsMode} onFullscreenLyricsModeChange={updateFullscreenLyricsMode}
                 autoFullscreen={autoFullscreen} onAutoFullscreenChange={updateAutoFullscreen}
                 spotifyConnected={spotifyReady} spotifyConnecting={connectingSpotify} spotifyError={spotifyError}
@@ -841,21 +896,50 @@ export default function App() {
       {screensaver && visual.screensaverMinutes > 0 && selected && !fullscreen && <AmbientScreensaver track={selected} time={time} delayMs={delayMs} onExit={() => setScreensaver(false)} />}
 
       {fullscreen && selected && (
-        <FullscreenLyrics
-          track={selected}
-          currentTime={time}
-          duration={playbackDuration}
-          playing={playing}
-          delayMs={delayMs}
-          mode={fullscreenLyricsMode}
-          onDelayChange={updateDelay}
-          browserFullscreen={browserFullscreen}
-          canEnterBrowserFullscreen={canUseBrowserFullscreen()}
-          onEnterBrowserFullscreen={openFullscreen}
-          onClose={closeFullscreen}
-          onTogglePlay={togglePlayback}
-          onSeek={seekPlayback}
-        />
+        <>
+          {showDynamic ? <DynamicFullscreenVisualizer
+            key={selected.id}
+            track={selected}
+            currentTime={time}
+            duration={playbackDuration}
+            playing={playing}
+            delayMs={delayMs}
+            onOpenSettings={openFullscreenSettings}
+          /> : <FullscreenLyrics
+            track={selected}
+            currentTime={time}
+            duration={playbackDuration}
+            playing={playing}
+            delayMs={delayMs}
+            mode={fullscreenLyricsMode}
+            onDelayChange={updateDelay}
+            browserFullscreen={browserFullscreen}
+            canEnterBrowserFullscreen={canUseBrowserFullscreen()}
+            onEnterBrowserFullscreen={openFullscreen}
+            onClose={closeFullscreen}
+            onTogglePlay={togglePlayback}
+            onSeek={seekPlayback}
+          />}
+          <SettingsDialog
+            dialogRef={fullscreenSettingsRef}
+            fullscreenStyle={fullscreenStyle}
+            canFillScreen={!browserFullscreen && canUseBrowserFullscreen()}
+            playing={playing}
+            onStyleChange={updateFullscreenStyle}
+            onTogglePlay={togglePlayback}
+            onExitFullscreen={closeFullscreen}
+            onFillScreen={() => {
+              fullscreenSettingsRef.current?.close?.()
+              openFullscreen()
+            }}
+            onClose={() => {
+              if (!fullscreenSettingsRef.current?.open) {
+                const target = showDynamic ? '.dynamic-stage' : '.stage-close'
+                document.querySelector<HTMLElement>(target)?.focus({ preventScroll: true })
+              }
+            }}
+          />
+        </>
       )}
     </div>
   )
